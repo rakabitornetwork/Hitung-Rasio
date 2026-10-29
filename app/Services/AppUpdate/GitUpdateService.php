@@ -116,10 +116,13 @@ class GitUpdateService
         $remote = (string) config('app_update.remote');
         $branch = (string) config('app_update.branch');
 
+        // Aset Vite di public/build sering berubah lokal di VPS dan menghalangi ff-only.
+        $this->discardGeneratedBuildChanges($before['dirty_files'] ?? []);
+
         $pull = $this->git(['pull', '--ff-only', $remote, $branch], timeout: 120);
 
         if ($pull->failed()) {
-            $files = $before['dirty_files'] ?? [];
+            $files = $this->dirtyFiles();
             $hint = $files !== []
                 ? ' File lokal yang berubah: '.implode(', ', array_slice($files, 0, 8)).'. Commit, stash, atau kembalikan file itu dulu.'
                 : ' Pastikan user PHP-FPM bisa menulis ke folder aplikasi dan .git, serta remote GitHub bisa diakses tanpa prompt.';
@@ -249,6 +252,24 @@ class GitUpdateService
         }
 
         return array_values(array_unique($files));
+    }
+
+    /**
+     * @param  list<string>  $dirtyFiles
+     */
+    private function discardGeneratedBuildChanges(array $dirtyFiles): void
+    {
+        $buildFiles = array_values(array_filter(
+            $dirtyFiles,
+            fn (string $file): bool => str_starts_with($file, 'public/build/'),
+        ));
+
+        if ($buildFiles === []) {
+            return;
+        }
+
+        $this->git(array_merge(['checkout', '--'], $buildFiles));
+        $this->git(['clean', '-fd', '--', 'public/build']);
     }
 
     private function ensureGitRepo(): void

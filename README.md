@@ -204,12 +204,32 @@ git fetch origin main
 git pull --ff-only origin main
 ```
 
-3. Jika ada file lokal berubah: commit, stash, atau `git checkout -- <file>` (hati-hati: menghapus perubahan lokal).
-4. Pastikan kepemilikan folder untuk user web, contoh:
+3. Jika error *local changes would be overwritten* pada `public/build/` (hasil `npm run build` lokal):
 
 ```bash
-sudo chown -R www-data:www-data /path/ke/aplikasi
-# atau nobody / nginx sesuai VPS Anda
+sudo -u teslatech -H bash -lc 'cd /home/teslatech/domains/rasio.teslatech.my.id/public_html && git checkout -- public/build && git clean -fd -- public/build && git pull --ff-only origin main && php artisan config:clear'
+```
+
+File lain yang berubah: commit, stash, atau `git checkout -- <file>` (hati-hati: menghapus perubahan lokal). Tombol Update UI otomatis membuang perubahan lokal di `public/build/` sebelum pull.
+4. Error **dubious ownership** (sering saat `git` dijalankan sebagai `root` sementara folder milik user hosting):
+
+```bash
+# Lebih aman: jalankan git sebagai pemilik folder, bukan root
+sudo -u teslatech -H git -C /home/teslatech/domains/rasio.teslatech.my.id/public_html pull --ff-only origin main
+
+# Atau izinkan directory ini (untuk user yang menjalankan perintah)
+git config --global --add safe.directory /home/teslatech/domains/rasio.teslatech.my.id/public_html
+
+# Agar PHP-FPM juga aman (system-wide)
+git config --system --add safe.directory /home/teslatech/domains/rasio.teslatech.my.id/public_html
+```
+
+Tombol Update di UI sudah memakai `git -c safe.directory=*`, jadi biasanya tidak kena error ini.
+5. Pastikan kepemilikan folder untuk user web/hosting, contoh:
+
+```bash
+sudo chown -R teslatech:teslatech /home/teslatech/domains/rasio.teslatech.my.id/public_html
+# sesuaikan user/group panel Anda (teslatech, www-data, dll.)
 ```
 
 5. Matikan build otomatis jika npm bermasalah:
