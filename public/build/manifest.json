@@ -1,0 +1,92 @@
+{
+  "_fonts-D374NXT9.css": {
+    "file": "assets/fonts-D374NXT9.css",
+    "src": "_fonts-D374NXT9.css"
+  },
+  "_ibm-plex-mono-400-normal-CvHOgSBP.woff": {
+    "file": "assets/ibm-plex-mono-400-normal-CvHOgSBP.woff",
+    "src": "_ibm-plex-mono-400-normal-CvHOgSBP.woff"
+  },
+  "_ibm-plex-mono-400-normal-DMJ8VG8y.woff2": {
+    "file": "assets/ibm-plex-mono-400-normal-DMJ8VG8y.woff2",
+    "src": "_ibm-plex-mono-400-normal-DMJ8VG8y.woff2"
+  },
+  "_ibm-plex-mono-500-normal-CB9ihrfo.woff": {
+    "file": "assets/ibm-plex-mono-500-normal-CB9ihrfo.woff",
+    "src": "_ibm-plex-mono-500-normal-CB9ihrfo.woff"
+  },
+  "_ibm-plex-mono-500-normal-DSY6xOcd.woff2": {
+    "file": "assets/ibm-plex-mono-500-normal-DSY6xOcd.woff2",
+    "src": "_ibm-plex-mono-500-normal-DSY6xOcd.woff2"
+  },
+  "_ibm-plex-mono-600-normal-BgSNZQsw.woff2": {
+    "file": "assets/ibm-plex-mono-600-normal-BgSNZQsw.woff2",
+    "src": "_ibm-plex-mono-600-normal-BgSNZQsw.woff2"
+  },
+  "_ibm-plex-mono-600-normal-DWFSQ4vo.woff": {
+    "file": "assets/ibm-plex-mono-600-normal-DWFSQ4vo.woff",
+    "src": "_ibm-plex-mono-600-normal-DWFSQ4vo.woff"
+  },
+  "_ibm-plex-sans-400-normal-CDDApCn2.woff2": {
+    "file": "assets/ibm-plex-sans-400-normal-CDDApCn2.woff2",
+    "src": "_ibm-plex-sans-400-normal-CDDApCn2.woff2"
+  },
+  "_ibm-plex-sans-400-normal-CYLoc0-x.woff": {
+    "file": "assets/ibm-plex-sans-400-normal-CYLoc0-x.woff",
+    "src": "_ibm-plex-sans-400-normal-CYLoc0-x.woff"
+  },
+  "_ibm-plex-sans-500-normal-6ng42L7E.woff2": {
+    "file": "assets/ibm-plex-sans-500-normal-6ng42L7E.woff2",
+    "src": "_ibm-plex-sans-500-normal-6ng42L7E.woff2"
+  },
+  "_ibm-plex-sans-500-normal-BgVn5rGT.woff": {
+    "file": "assets/ibm-plex-sans-500-normal-BgVn5rGT.woff",
+    "src": "_ibm-plex-sans-500-normal-BgVn5rGT.woff"
+  },
+  "_ibm-plex-sans-600-normal-Cu4Hd6ag.woff": {
+    "file": "assets/ibm-plex-sans-600-normal-Cu4Hd6ag.woff",
+    "src": "_ibm-plex-sans-600-normal-Cu4Hd6ag.woff"
+  },
+  "_ibm-plex-sans-600-normal-CuJfVYMP.woff2": {
+    "file": "assets/ibm-plex-sans-600-normal-CuJfVYMP.woff2",
+    "src": "_ibm-plex-sans-600-normal-CuJfVYMP.woff2"
+  },
+  "_ibm-plex-sans-700-normal-Bth3BMcD.woff": {
+    "file": "assets/ibm-plex-sans-700-normal-Bth3BMcD.woff",
+    "src": "_ibm-plex-sans-700-normal-Bth3BMcD.woff"
+  },
+  "_ibm-plex-sans-700-normal-Bxkt5Cjx.woff2": {
+    "file": "assets/ibm-plex-sans-700-normal-Bxkt5Cjx.woff2",
+    "src": "_ibm-plex-sans-700-normal-Bxkt5Cjx.woff2"
+  },
+  "resources/css/app.css": {
+    "file": "assets/app-C6wKZGaG.css",
+    "name": "app",
+    "names": [
+      "app.css"
+    ],
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/js/Pages/PowerRx/Index.tsx": {
+    "file": "assets/Index-tCwDDOwL.js",
+    "name": "Index",
+    "src": "resources/js/Pages/PowerRx/Index.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "resources/js/app.tsx"
+    ]
+  },
+  "resources/js/app.tsx": {
+    "file": "assets/app-CGnqpp3G.js",
+    "name": "app",
+    "src": "resources/js/app.tsx",
+    "isEntry": true,
+    "dynamicImports": [
+      "resources/js/Pages/PowerRx/Index.tsx"
+    ],
+    "css": [
+      "assets/app-C6wKZGaG.css"
+    ]
+  }
+}
