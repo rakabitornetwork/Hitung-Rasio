@@ -35,6 +35,14 @@ class CalculateTapChainRequest extends FormRequest
             'nodes.*.name' => ['required', 'string', 'max:64'],
             'nodes.*.tap_percent' => ['nullable', 'integer', 'min:0', 'max:99'],
             'nodes.*.odp_splitter' => ['nullable', 'integer', Rule::in($allowedSplitters)],
+            'nodes.*.hasil_branch' => ['nullable', 'array', 'max:8'],
+            'nodes.*.hasil_branch.*.id' => ['required_with:nodes.*.hasil_branch', 'string', 'max:64'],
+            'nodes.*.hasil_branch.*.name' => ['required_with:nodes.*.hasil_branch', 'string', 'max:64'],
+            'nodes.*.hasil_branch.*.odp_splitter' => ['required_with:nodes.*.hasil_branch', 'integer', Rule::in($allowedSplitters)],
+            'nodes.*.lanjut_branch' => ['nullable', 'array', 'max:8'],
+            'nodes.*.lanjut_branch.*.id' => ['required_with:nodes.*.lanjut_branch', 'string', 'max:64'],
+            'nodes.*.lanjut_branch.*.name' => ['required_with:nodes.*.lanjut_branch', 'string', 'max:64'],
+            'nodes.*.lanjut_branch.*.odp_splitter' => ['required_with:nodes.*.lanjut_branch', 'integer', Rule::in($allowedSplitters)],
         ];
     }
 
@@ -52,17 +60,7 @@ class CalculateTapChainRequest extends FormRequest
     }
 
     /**
-     * @return array{
-     *     sfp_power_dbm: float,
-     *     fiber_m: float,
-     *     attenuation_db_per_km: float,
-     *     connector_count: int,
-     *     connector_loss_db_each: float,
-     *     splice_count: int,
-     *     splice_loss_db_each: float,
-     *     design_margin_db: float,
-     *     nodes: list<array{id: string, type: string, name: string, tap_percent?: int, odp_splitter?: int}>
-     * }
+     * @return array<string, mixed>
      */
     public function chainInput(): array
     {
@@ -87,6 +85,8 @@ class CalculateTapChainRequest extends FormRequest
                     'name' => $node['name'],
                     'tap_percent' => (int) ($node['tap_percent'] ?? 0),
                     'odp_splitter' => (int) ($node['odp_splitter'] ?? 8),
+                    'hasil_branch' => $this->mapBranch($node['hasil_branch'] ?? []),
+                    'lanjut_branch' => $this->mapBranch($node['lanjut_branch'] ?? []),
                 ];
             } else {
                 $nodes[] = [
@@ -109,5 +109,18 @@ class CalculateTapChainRequest extends FormRequest
             'design_margin_db' => (float) ($data['design_margin_db'] ?? $defaults['design_margin_db']),
             'nodes' => $nodes,
         ];
+    }
+
+    /**
+     * @param  list<array{id: string, name: string, odp_splitter: int}>  $branch
+     * @return list<array{id: string, name: string, odp_splitter: int}>
+     */
+    private function mapBranch(array $branch): array
+    {
+        return array_map(fn (array $item): array => [
+            'id' => $item['id'],
+            'name' => $item['name'],
+            'odp_splitter' => (int) $item['odp_splitter'],
+        ], $branch);
     }
 }

@@ -8,6 +8,7 @@ import { ChevronRight, GripVertical, Trash2 } from 'lucide-react';
 import IconPng from '@/Components/IconPng';
 import {
     asNumber,
+    branchStagesFor,
     formatDb,
     kindLabel,
     newNodeId,
@@ -16,6 +17,8 @@ import {
     statusLabel,
 } from '@/lib/powerRx';
 import type {
+    BranchPort,
+    BranchSplitter,
     ComboNode,
     FlowNode,
     PowerRxConfig,
@@ -28,6 +31,14 @@ import type {
 } from '@/types/powerRx';
 
 type PaletteType = 'sfp' | 'rasio' | 'splitter' | 'combo';
+
+type ActiveDrag =
+    | { kind: 'palette'; type: PaletteType }
+    | { kind: 'canvas-node'; index: number };
+
+/** Payload drag andal (MIME kustom dataTransfer sering kosong di beberapa browser). */
+let activeDrag: ActiveDrag | null = null;
+let branchDropHandled = false;
 
 type Props = {
     config: PowerRxConfig;
@@ -105,6 +116,8 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                 name: `ODP ${n}`,
                 tapPercent: 0,
                 odpSplitter: 8,
+                hasilBranch: [],
+                lanjutBranch: [],
             };
         } else {
             next = {
@@ -153,51 +166,218 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
         setSelectedId(item.id);
     }
 
+    function normalizeCombo(node: ComboNode): ComboNode {
+        return {
+            ...node,
+            hasilBranch: node.hasilBranch ?? [],
+            lanjutBranch: node.lanjutBranch ?? [],
+        };
+    }
+
+    function addBranchSplitter(
+        comboId: string,
+        port: BranchPort,
+        odpSplitter = 8,
+    ) {
+        onChange({
+            ...chain,
+            nodes: chain.nodes.map((node) => {
+                if (node.id !== comboId || node.type !== 'combo') {
+                    return node;
+                }
+
+                const combo = normalizeCombo(node);
+                const list =
+                    port === 'hasil'
+                        ? [...combo.hasilBranch]
+                        : [...combo.lanjutBranch];
+                const item: BranchSplitter = {
+                    id: newNodeId(`br-${port}`),
+                    name: port === 'hasil' ? `Cabang HASIL ${list.length + 1}` : `Cabang Lanjut ${list.length + 1}`,
+                    odpSplitter,
+                };
+                list.push(item);
+
+                return port === 'hasil'
+                    ? { ...combo, hasilBranch: list }
+                    : { ...combo, lanjutBranch: list };
+            }),
+        });
+        setSelectedId(comboId);
+    }
+
+    function attachCanvasSplitterToBranch(
+        comboId: string,
+        port: BranchPort,
+        nodeIndex: number,
+    ) {
+        const source = chain.nodes[nodeIndex];
+        if (!source || source.type !== 'splitter') {
+            addBranchSplitter(comboId, port);
+
+            return;
+        }
+
+        const branchItem: BranchSplitter = {
+            id: source.id,
+            name: source.name,
+            odpSplitter: source.odpSplitter,
+        };
+
+        const without = chain.nodes.filter((_, i) => i !== nodeIndex);
+        onChange({
+            ...chain,
+            nodes: without.map((node) => {
+                if (node.id !== comboId || node.type !== 'combo') {
+                    return node;
+                }
+
+                const combo = normalizeCombo(node);
+                const list =
+                    port === 'hasil'
+                        ? [...combo.hasilBranch, branchItem]
+                        : [...combo.lanjutBranch, branchItem];
+
+                return port === 'hasil'
+                    ? { ...combo, hasilBranch: list }
+                    : { ...combo, lanjutBranch: list };
+            }),
+        });
+        setSelectedId(comboId);
+    }
+
+    function handleBranchDrop(comboId: string, port: BranchPort) {
+        branchDropHandled = true;
+        const drag = activeDrag;
+        activeDrag = null;
+
+        if (drag?.kind === 'palette' && drag.type === 'splitter') {
+            addBranchSplitter(comboId, port);
+
+            return;
+        }
+
+        if (drag?.kind === 'canvas-node') {
+            attachCanvasSplitterToBranch(comboId, port, drag.index);
+
+            return;
+        }
+
+        // Fallback: tetap tambah splitter baru di cabang yang dipilih
+        addBranchSplitter(comboId, port);
+    }
+
+    function updateBranchSplitter(
+        comboId: string,
+        port: BranchPort,
+        branchId: string,
+        patch: Partial<BranchSplitter>,
+    ) {
+        onChange({
+            ...chain,
+            nodes: chain.nodes.map((node) => {
+                if (node.id !== comboId || node.type !== 'combo') {
+                    return node;
+                }
+
+                const combo = normalizeCombo(node);
+                const key = port === 'hasil' ? 'hasilBranch' : 'lanjutBranch';
+
+                return {
+                    ...combo,
+                    [key]: combo[key].map((item) =>
+                        item.id === branchId ? { ...item, ...patch } : item,
+                    ),
+                };
+            }),
+        });
+    }
+
+    function removeBranchSplitter(
+        comboId: string,
+        port: BranchPort,
+        branchId: string,
+    ) {
+        onChange({
+            ...chain,
+            nodes: chain.nodes.map((node) => {
+                if (node.id !== comboId || node.type !== 'combo') {
+                    return node;
+                }
+
+                const combo = normalizeCombo(node);
+                const key = port === 'hasil' ? 'hasilBranch' : 'lanjutBranch';
+
+                return {
+                    ...combo,
+                    [key]: combo[key].filter((item) => item.id !== branchId),
+                };
+            }),
+        });
+    }
+
     function onPaletteDragStart(event: DragEvent, type: PaletteType) {
+        activeDrag = { kind: 'palette', type };
+        branchDropHandled = false;
+        event.dataTransfer.setData('text/plain', `palette:${type}`);
         event.dataTransfer.setData('application/x-palette', type);
         event.dataTransfer.effectAllowed = 'copy';
     }
 
     function onNodeDragStart(event: DragEvent, index: number) {
+        activeDrag = { kind: 'canvas-node', index };
+        branchDropHandled = false;
+        event.dataTransfer.setData('text/plain', `node:${index}`);
         event.dataTransfer.setData('application/x-node-index', String(index));
         event.dataTransfer.effectAllowed = 'move';
     }
 
-    function onCanvasDragOver(event: DragEvent) {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = event.dataTransfer.types.includes(
-            'application/x-node-index',
-        )
-            ? 'move'
-            : 'copy';
+    function clearDrag() {
+        activeDrag = null;
+        branchDropHandled = false;
     }
 
-    function applyDrop(palette: string, nodeIndex: string, atIndex: number) {
-        if (palette === 'rasio' || palette === 'splitter' || palette === 'combo') {
-            addNode(palette, atIndex);
+    function onCanvasDragOver(event: DragEvent) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect =
+            activeDrag?.kind === 'canvas-node' ? 'move' : 'copy';
+    }
+
+    function applyDrop(atIndex: number) {
+        const drag = activeDrag;
+        activeDrag = null;
+
+        if (!drag) {
+            return;
+        }
+
+        if (drag.kind === 'palette') {
+            if (drag.type === 'sfp') {
+                setSelectedId(null);
+
+                return;
+            }
+
+            addNode(drag.type, atIndex);
 
             return;
         }
 
-        if (palette === 'sfp') {
-            setSelectedId(null);
-
-            return;
-        }
-
-        if (nodeIndex !== '') {
-            reorderNode(Number(nodeIndex), atIndex);
-        }
+        reorderNode(drag.index, atIndex);
     }
 
     function onCanvasDrop(event: DragEvent) {
         event.preventDefault();
         setDragOverIndex(null);
-        applyDrop(
-            event.dataTransfer.getData('application/x-palette'),
-            event.dataTransfer.getData('application/x-node-index'),
-            chain.nodes.length,
-        );
+
+        if (branchDropHandled) {
+            branchDropHandled = false;
+            activeDrag = null;
+
+            return;
+        }
+
+        applyDrop(chain.nodes.length);
     }
 
     function onSlotDragOver(event: DragEvent, index: number) {
@@ -210,11 +390,15 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
         event.preventDefault();
         event.stopPropagation();
         setDragOverIndex(null);
-        applyDrop(
-            event.dataTransfer.getData('application/x-palette'),
-            event.dataTransfer.getData('application/x-node-index'),
-            index,
-        );
+
+        if (branchDropHandled) {
+            branchDropHandled = false;
+            activeDrag = null;
+
+            return;
+        }
+
+        applyDrop(index);
     }
 
     return (
@@ -277,7 +461,7 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                     <div>
                         <p className="text-sm font-semibold text-ink">Kanvas jalur optik</p>
                         <p className="text-xs text-ink-soft">
-                            Kartu gabungan atau susunan terpisah. Teal = feeder · Merah = lanjut
+                            Seret/tambah Splitter 1:N ke zona HASIL di kartu gabungan
                         </p>
                     </div>
                 </div>
@@ -333,51 +517,100 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
 
                     {chain.nodes.map((node, index) => {
                         const stage = stageForNode(result, node.id);
+                        const nextNode = chain.nodes[index + 1];
+                        const prevNode = chain.nodes[index - 1];
                         const paired =
-                            node.type === 'rasio' &&
-                            chain.nodes[index + 1]?.type === 'splitter';
+                            node.type === 'rasio' && nextNode?.type === 'splitter';
                         const isTapChild =
-                            node.type === 'splitter' &&
-                            chain.nodes[index - 1]?.type === 'rasio';
+                            node.type === 'splitter' && prevNode?.type === 'rasio';
 
                         return (
                             <div
                                 key={node.id}
                                 className="relative z-10 flex items-center"
                             >
-                                <div
-                                    draggable
-                                    onDragStart={(e) => onNodeDragStart(e, index)}
-                                    onDragEnd={() => setDragOverIndex(null)}
-                                >
-                                    {node.type === 'combo' ? (
-                                        <ComboCard
-                                            node={node}
-                                            stage={stage}
-                                            selected={selectedId === node.id}
-                                            onSelect={() => setSelectedId(node.id)}
-                                            onRemove={() => removeNode(node.id)}
-                                        />
-                                    ) : node.type === 'rasio' ? (
-                                        <RasioCard
-                                            node={node}
-                                            stage={stage}
-                                            selected={selectedId === node.id}
-                                            paired={paired}
-                                            onSelect={() => setSelectedId(node.id)}
-                                            onRemove={() => removeNode(node.id)}
-                                        />
-                                    ) : (
-                                        <SplitterCard
-                                            node={node}
-                                            stage={stage}
-                                            selected={selectedId === node.id}
-                                            fromTap={isTapChild}
-                                            onSelect={() => setSelectedId(node.id)}
-                                            onRemove={() => removeNode(node.id)}
-                                        />
-                                    )}
-                                </div>
+                                {node.type === 'combo' ? (
+                                    <ComboCard
+                                        node={normalizeCombo(node)}
+                                        stage={stage}
+                                        result={result}
+                                        config={config}
+                                        selected={selectedId === node.id}
+                                        onSelect={() => setSelectedId(node.id)}
+                                        onRemove={() => removeNode(node.id)}
+                                        onDropBranch={(port) =>
+                                            handleBranchDrop(node.id, port)
+                                        }
+                                        onAddBranch={(port) =>
+                                            addBranchSplitter(node.id, port)
+                                        }
+                                        onUpdateBranch={(port, id, patch) =>
+                                            updateBranchSplitter(
+                                                node.id,
+                                                port,
+                                                id,
+                                                patch,
+                                            )
+                                        }
+                                        onRemoveBranch={(port, id) =>
+                                            removeBranchSplitter(
+                                                node.id,
+                                                port,
+                                                id,
+                                            )
+                                        }
+                                        dragHandleProps={{
+                                            draggable: true,
+                                            onDragStart: (e) =>
+                                                onNodeDragStart(e, index),
+                                            onDragEnd: () => {
+                                                setDragOverIndex(null);
+                                                clearDrag();
+                                            },
+                                        }}
+                                    />
+                                ) : (
+                                    <div
+                                        draggable
+                                        onDragStart={(e) =>
+                                            onNodeDragStart(e, index)
+                                        }
+                                        onDragEnd={() => {
+                                            setDragOverIndex(null);
+                                            clearDrag();
+                                        }}
+                                    >
+                                        {node.type === 'rasio' ? (
+                                            <RasioCard
+                                                node={node}
+                                                stage={stage}
+                                                selected={selectedId === node.id}
+                                                paired={paired}
+                                                onSelect={() =>
+                                                    setSelectedId(node.id)
+                                                }
+                                                onRemove={() =>
+                                                    removeNode(node.id)
+                                                }
+                                            />
+                                        ) : (
+                                            <SplitterCard
+                                                node={node}
+                                                stage={stage}
+                                                selected={
+                                                    selectedId === node.id
+                                                }
+                                                fromTap={isTapChild}
+                                                onSelect={() =>
+                                                    setSelectedId(node.id)
+                                                }
+                                                onRemove={() =>
+                                                    removeNode(node.id)
+                                                }
+                                            />
+                                        )}
+                                    </div>
+                                )}
                                 <DropSlot
                                     active={dragOverIndex === index + 1}
                                     onDragOver={(e) => onSlotDragOver(e, index + 1)}
@@ -385,12 +618,19 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                                 />
                                 {index < chain.nodes.length - 1 && (
                                     <AutoPath
-                                        label={pathLabel(node, stage, paired)}
-                                        tone={
-                                            node.type === 'rasio' && paired
-                                                ? 'tap'
-                                                : 'thru'
-                                        }
+                                        label={pathLabel(
+                                            node,
+                                            stage,
+                                            paired,
+                                            node.type === 'combo'
+                                                ? branchStagesFor(
+                                                      result,
+                                                      node.id,
+                                                      'lanjut',
+                                                  )
+                                                : [],
+                                        )}
+                                        tone={paired ? 'tap' : 'thru'}
                                     />
                                 )}
                             </div>
@@ -463,15 +703,24 @@ function pathLabel(
     node: FlowNode,
     stage: StageResult | undefined,
     paired: boolean,
+    lanjutBranchStages: StageResult[] = [],
 ): string {
     if (node.type === 'rasio' && paired) {
         return 'tap';
     }
 
-    if (
-        (node.type === 'combo' || node.type === 'rasio') &&
-        stage?.outputThroughDbm != null
-    ) {
+    if (node.type === 'combo' && stage) {
+        const end =
+            lanjutBranchStages.length > 0
+                ? lanjutBranchStages[lanjutBranchStages.length - 1].hasilRedamanDbm
+                : stage.outputThroughDbm;
+
+        if (end != null) {
+            return `lanjut ${formatDb(end)}`;
+        }
+    }
+
+    if (node.type === 'rasio' && stage?.outputThroughDbm != null) {
         return `lanjut ${formatDb(stage.outputThroughDbm)}`;
     }
 
@@ -509,6 +758,12 @@ function PaletteItem({
         <div
             draggable={!disabled}
             onDragStart={onDragStart}
+            onDragEnd={() => {
+                // Jangan hapus jika drop cabang baru saja menandai handled
+                if (!branchDropHandled) {
+                    activeDrag = null;
+                }
+            }}
             className={`flex cursor-grab items-center gap-3 rounded-xl border border-line bg-white p-2.5 active:cursor-grabbing ${
                 disabled ? 'cursor-not-allowed opacity-40' : 'hover:border-signal/40'
             }`}
@@ -549,26 +804,32 @@ function AutoPath({
     tone,
 }: {
     label: string;
-    tone: 'signal' | 'thru' | 'tap';
+    tone: 'signal' | 'thru' | 'tap' | 'hasil';
 }) {
     const line =
         tone === 'signal'
             ? 'bg-signal h-1.5 rounded-full'
             : tone === 'thru'
               ? 'border-t-2 border-dashed border-red-600'
-              : 'border-t-2 border-dashed border-sky-500';
+              : tone === 'hasil'
+                ? 'border-t-2 border-dashed border-emerald-600'
+                : 'border-t-2 border-dashed border-sky-500';
     const text =
         tone === 'signal'
             ? 'text-signal-deep'
             : tone === 'thru'
               ? 'text-red-700'
-              : 'text-sky-700';
+              : tone === 'hasil'
+                ? 'text-emerald-700'
+                : 'text-sky-700';
     const arrow =
         tone === 'signal'
             ? 'text-signal'
             : tone === 'thru'
               ? 'text-red-600'
-              : 'text-sky-600';
+              : tone === 'hasil'
+                ? 'text-emerald-600'
+                : 'text-sky-600';
 
     return (
         <div className="mx-1 flex w-[4.5rem] shrink-0 flex-col items-center justify-center">
@@ -586,16 +847,44 @@ function AutoPath({
 function ComboCard({
     node,
     stage,
+    result,
+    config,
     selected,
     onSelect,
     onRemove,
+    onDropBranch,
+    onAddBranch,
+    onUpdateBranch,
+    onRemoveBranch,
+    dragHandleProps,
 }: {
     node: ComboNode;
     stage?: StageResult;
+    result: TapChainResult;
+    config: PowerRxConfig;
     selected: boolean;
     onSelect: () => void;
     onRemove: () => void;
+    onDropBranch: (port: BranchPort) => void;
+    onAddBranch: (port: BranchPort) => void;
+    onUpdateBranch: (
+        port: BranchPort,
+        id: string,
+        patch: Partial<BranchSplitter>,
+    ) => void;
+    onRemoveBranch: (port: BranchPort, id: string) => void;
+    dragHandleProps: {
+        draggable: boolean;
+        onDragStart: (event: DragEvent) => void;
+        onDragEnd: () => void;
+    };
 }) {
+    const hasilStages = branchStagesFor(result, node.id, 'hasil');
+    const hasilEnd =
+        hasilStages.length > 0
+            ? hasilStages[hasilStages.length - 1].hasilRedamanDbm
+            : stage?.hasilRedamanDbm;
+
     return (
         <div
             role="button"
@@ -606,13 +895,13 @@ function ComboCard({
                     onSelect();
                 }
             }}
-            className={`w-[210px] rounded-2xl border-2 bg-white p-3 shadow-md transition ${
+            className={`w-[240px] rounded-2xl border-2 bg-white p-3 shadow-md transition ${
                 selected
                     ? 'border-violet-500 ring-2 ring-violet-200'
                     : 'border-line hover:border-violet-300'
             }`}
         >
-            <CardChrome onRemove={onRemove} />
+            <CardChrome onRemove={onRemove} dragHandleProps={dragHandleProps} />
             <div className="mb-2 flex items-center gap-2">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-violet-100">
                     <IconPng name="odp" size={28} alt="ODP" />
@@ -634,24 +923,223 @@ function ComboCard({
                     <p className="font-mono text-xs font-semibold">1:{node.odpSplitter}</p>
                 </div>
             </div>
+
             {stage && (
-                <div className="mt-2 rounded-lg bg-ink px-2 py-1.5 text-white">
-                    <p className="text-[10px] text-white/60 uppercase">Hasil</p>
-                    <p className="font-mono text-base font-semibold">
-                        {formatDb(stage.hasilRedamanDbm)}
-                    </p>
-                    <span
-                        className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${statusClasses(stage.status)}`}
-                    >
-                        {statusLabel(stage.status)}
-                    </span>
-                </div>
+                <BranchDropZone
+                    port="hasil"
+                    title="HASIL"
+                    baseDbm={stage.hasilRedamanDbm}
+                    endDbm={hasilEnd}
+                    baseStatus={stage.status}
+                    items={node.hasilBranch}
+                    stages={hasilStages}
+                    config={config}
+                    onDropSplitter={() => onDropBranch('hasil')}
+                    onAddClick={() => onAddBranch('hasil')}
+                    onUpdate={(id, patch) => onUpdateBranch('hasil', id, patch)}
+                    onRemove={(id) => onRemoveBranch('hasil', id)}
+                />
             )}
+
             {stage?.outputThroughDbm != null && (
                 <p className="mt-2 text-center font-mono text-[10px] text-red-700">
                     Lanjut {formatDb(stage.outputThroughDbm)} dBm →
                 </p>
             )}
+        </div>
+    );
+}
+
+function BranchDropZone({
+    port,
+    title,
+    baseDbm,
+    endDbm,
+    baseStatus,
+    items,
+    stages,
+    config,
+    onDropSplitter,
+    onAddClick,
+    onUpdate,
+    onRemove,
+}: {
+    port: BranchPort;
+    title: string;
+    baseDbm: number;
+    endDbm?: number;
+    baseStatus?: PowerRxStatus;
+    items: BranchSplitter[];
+    stages: StageResult[];
+    config: PowerRxConfig;
+    onDropSplitter: () => void;
+    onAddClick: () => void;
+    onUpdate: (id: string, patch: Partial<BranchSplitter>) => void;
+    onRemove: (id: string) => void;
+}) {
+    const [over, setOver] = useState(false);
+    const isHasil = port === 'hasil';
+
+    function handleDragOver(event: DragEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'copy';
+        setOver(true);
+    }
+
+    function handleDrop(event: DragEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        setOver(false);
+        onDropSplitter();
+    }
+
+    return (
+        <div
+            onDragOver={handleDragOver}
+            onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setOver(true);
+            }}
+            onDragLeave={(e) => {
+                e.stopPropagation();
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setOver(false);
+                }
+            }}
+            onDrop={handleDrop}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={`mt-2 rounded-lg border-2 border-dashed p-2 transition ${
+                over
+                    ? 'border-signal bg-signal/15 ring-2 ring-signal/30'
+                    : isHasil
+                      ? 'border-white/30 bg-ink text-white'
+                      : 'border-red-400 bg-red-50'
+            }`}
+        >
+            <div className="flex items-center justify-between gap-2">
+                <p
+                    className={`text-[10px] font-semibold uppercase ${
+                        isHasil ? 'text-white/60' : 'text-red-700'
+                    }`}
+                >
+                    {title}
+                </p>
+                <p
+                    className={`font-mono text-sm font-semibold ${
+                        isHasil ? 'text-white' : 'text-red-700'
+                    }`}
+                >
+                    {formatDb(baseDbm)} dBm
+                </p>
+            </div>
+            {isHasil && baseStatus && items.length === 0 && (
+                <span
+                    className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${statusClasses(baseStatus)}`}
+                >
+                    {statusLabel(baseStatus)}
+                </span>
+            )}
+
+            <div className="mt-2 space-y-1.5">
+                {items.map((item, index) => {
+                    const st = stages[index];
+
+                    return (
+                        <div
+                            key={item.id}
+                            className={`rounded-md border px-2 py-1.5 ${
+                                isHasil
+                                    ? 'border-white/20 bg-white/10'
+                                    : 'border-red-200 bg-white'
+                            }`}
+                        >
+                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase opacity-70">
+                                <IconPng name="splitter" size={14} alt="1:N" />
+                                Splitter 1:N
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <select
+                                    value={item.odpSplitter}
+                                    onChange={(e) =>
+                                        onUpdate(item.id, {
+                                            odpSplitter: Number(e.target.value),
+                                        })
+                                    }
+                                    className={`min-w-0 flex-1 rounded border px-1 py-0.5 font-mono text-[11px] ${
+                                        isHasil
+                                            ? 'border-white/30 bg-ink text-white'
+                                            : 'border-line bg-white text-ink'
+                                    }`}
+                                >
+                                    {config.allowed_odp_splitters.map((ratio) => (
+                                        <option key={ratio} value={ratio}>
+                                            1:{ratio}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => onRemove(item.id)}
+                                    className={`rounded p-0.5 ${
+                                        isHasil
+                                            ? 'text-white/70 hover:bg-white/10'
+                                            : 'text-danger hover:bg-danger/10'
+                                    }`}
+                                    aria-label="Hapus splitter cabang"
+                                >
+                                    <Trash2 className="size-3" />
+                                </button>
+                            </div>
+                            {st && (
+                                <p
+                                    className={`mt-1 font-mono text-[11px] font-semibold ${
+                                        isHasil ? 'text-emerald-200' : 'text-emerald-800'
+                                    }`}
+                                >
+                                    Out {formatDb(st.inputPowerDbm)} →{' '}
+                                    {formatDb(st.hasilRedamanDbm)} dBm (
+                                    {statusLabel(st.status)})
+                                </p>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
+            {items.length > 0 && endDbm != null && (
+                <p
+                    className={`mt-1.5 font-mono text-[10px] ${
+                        isHasil ? 'text-white/70' : 'text-red-700'
+                    }`}
+                >
+                    Ujung {title}: {formatDb(endDbm)} dBm
+                </p>
+            )}
+
+            <button
+                type="button"
+                onClick={onAddClick}
+                className={`mt-2 flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium ${
+                    isHasil
+                        ? 'bg-white/15 text-white hover:bg-white/25'
+                        : 'bg-white text-red-700 ring-1 ring-red-200 hover:bg-red-100'
+                }`}
+            >
+                + Splitter 1:N di {title}
+            </button>
+
+            <p
+                className={`mt-1 text-center text-[9px] ${
+                    isHasil ? 'text-white/45' : 'text-red-600/70'
+                }`}
+            >
+                {over
+                    ? 'Lepas di sini — masuk cabang ini'
+                    : 'Atau seret Splitter 1:N ke zona ini'}
+            </p>
         </div>
     );
 }
@@ -726,6 +1214,8 @@ function SplitterCard({
     onSelect: () => void;
     onRemove: () => void;
 }) {
+    const sourceLabel = fromTap ? 'Dari tap rasio' : 'Standalone';
+
     return (
         <div
             role="button"
@@ -749,9 +1239,7 @@ function SplitterCard({
                 </div>
                 <div>
                     <p className="text-sm font-semibold text-ink">{node.name}</p>
-                    <p className="text-[10px] text-emerald-800">
-                        {fromTap ? 'Dari tap rasio' : 'Standalone'}
-                    </p>
+                    <p className="text-[10px] text-emerald-800">{sourceLabel}</p>
                 </div>
             </div>
             <p className="font-mono text-sm font-semibold text-ink">1:{node.odpSplitter}</p>
@@ -772,10 +1260,23 @@ function SplitterCard({
     );
 }
 
-function CardChrome({ onRemove }: { onRemove: () => void }) {
+function CardChrome({
+    onRemove,
+    dragHandleProps,
+}: {
+    onRemove: () => void;
+    dragHandleProps?: {
+        draggable: boolean;
+        onDragStart: (event: DragEvent) => void;
+        onDragEnd: () => void;
+    };
+}) {
     return (
         <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1 text-ink-soft">
+            <div
+                className="flex cursor-grab items-center gap-1 text-ink-soft active:cursor-grabbing"
+                {...dragHandleProps}
+            >
                 <GripVertical className="size-4" />
                 <span className="text-[10px] font-semibold tracking-wide uppercase">
                     Seret

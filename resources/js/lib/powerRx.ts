@@ -1,6 +1,8 @@
 import { ODP_SPLITTER_IL, RASIO_IL } from '@/lib/lossTables';
 import type {
-    FlowNode,
+    BranchPort,
+    BranchSplitter,
+    ComboNode,
     PathLossResult,
     PowerRxConfig,
     PowerRxStatus,
@@ -128,6 +130,114 @@ export function computePathLoss(
     };
 }
 
+function pushStage(
+    stages: StageResult[],
+    summary: TapChainResult['summary'],
+    stage: StageResult,
+): void {
+    stages.push(stage);
+    summary.enabledCount++;
+    summary[stage.status]++;
+}
+
+function appendBranchCascade(
+    branch: BranchSplitter[],
+    startPower: number,
+    port: BranchPort,
+    parentId: string,
+    config: Pick<PowerRxConfig, 'odp_splitter_il' | 'thresholds'>,
+    stages: StageResult[],
+    summary: TapChainResult['summary'],
+): number {
+    let power = startPower;
+
+    for (const item of branch) {
+        const odpSplitterIlDb = odpSplitterIl(item.odpSplitter, config.odp_splitter_il);
+        const hasilRedamanDbm = power - odpSplitterIlDb;
+        const status = resolveStatus(hasilRedamanDbm, config.thresholds);
+
+        pushStage(stages, summary, {
+            kind: 'splitter',
+            name: item.name,
+            nodeIds: [item.id],
+            inputPowerDbm: power,
+            tapPercent: null,
+            throughPercent: null,
+            tapIlDb: null,
+            throughIlDb: null,
+            outputTapDbm: null,
+            outputThroughDbm: hasilRedamanDbm,
+            odpSplitter: item.odpSplitter,
+            odpSplitterIlDb,
+            hasilRedamanDbm,
+            status,
+            branch: port,
+            parentId,
+        });
+
+        power = hasilRedamanDbm;
+    }
+
+    return power;
+}
+
+function appendCombo(
+    node: ComboNode,
+    power: number,
+    config: Pick<PowerRxConfig, 'rasio_il' | 'odp_splitter_il' | 'thresholds'>,
+    stages: StageResult[],
+    summary: TapChainResult['summary'],
+): number {
+    const tapPercent = Math.min(99, Math.max(0, Math.round(asNumber(node.tapPercent, 0))));
+    const throughPercent = 100 - tapPercent;
+    const tapIlDb = rasioIl(tapPercent, config.rasio_il);
+    const throughIlDb = rasioIl(throughPercent, config.rasio_il);
+    const odpSplitterIlDb = odpSplitterIl(node.odpSplitter, config.odp_splitter_il);
+    const outputTapDbm = power - tapIlDb;
+    const outputThroughDbm = power - throughIlDb;
+    const hasilRedamanDbm = outputTapDbm - odpSplitterIlDb;
+    const status = resolveStatus(hasilRedamanDbm, config.thresholds);
+
+    pushStage(stages, summary, {
+        kind: 'rasio_splitter',
+        name: node.name,
+        nodeIds: [node.id],
+        inputPowerDbm: power,
+        tapPercent,
+        throughPercent,
+        tapIlDb,
+        throughIlDb,
+        outputTapDbm,
+        outputThroughDbm,
+        odpSplitter: node.odpSplitter,
+        odpSplitterIlDb,
+        hasilRedamanDbm,
+        status,
+        branch: null,
+        parentId: null,
+    });
+
+    appendBranchCascade(
+        node.hasilBranch ?? [],
+        hasilRedamanDbm,
+        'hasil',
+        node.id,
+        config,
+        stages,
+        summary,
+    );
+
+    return appendBranchCascade(
+        node.lanjutBranch ?? [],
+        outputThroughDbm,
+        'lanjut',
+        node.id,
+        config,
+        stages,
+        summary,
+    );
+}
+
 export function calculateTapChain(
     input: TapChainInput,
     config: Pick<PowerRxConfig, 'rasio_il' | 'odp_splitter_il' | 'thresholds' | 'defaults'>,
@@ -150,34 +260,7 @@ export function calculateTapChain(
         const node = nodes[i];
 
         if (node.type === 'combo') {
-            const tapPercent = Math.min(99, Math.max(0, Math.round(asNumber(node.tapPercent, 0))));
-            const throughPercent = 100 - tapPercent;
-            const tapIlDb = rasioIl(tapPercent, config.rasio_il);
-            const throughIlDb = rasioIl(throughPercent, config.rasio_il);
-            const odpSplitterIlDb = odpSplitterIl(node.odpSplitter, config.odp_splitter_il);
-            const outputTapDbm = power - tapIlDb;
-            const outputThroughDbm = power - throughIlDb;
-            const hasilRedamanDbm = outputTapDbm - odpSplitterIlDb;
-            const status = resolveStatus(hasilRedamanDbm, config.thresholds);
-
-            stages.push({
-                kind: 'rasio_splitter',
-                name: node.name,
-                nodeIds: [node.id],
-                inputPowerDbm: power,
-                tapPercent,
-                throughPercent,
-                tapIlDb,
-                throughIlDb,
-                outputTapDbm,
-                outputThroughDbm,
-                odpSplitter: node.odpSplitter,
-                odpSplitterIlDb,
-                hasilRedamanDbm,
-                status,
-            });
-
-            power = outputThroughDbm;
+            power = appendCombo(node, power, config, stages, summary);
             i += 1;
         } else if (node.type === 'rasio') {
             const next = nodes[i + 1];
@@ -193,7 +276,7 @@ export function calculateTapChain(
                 const hasilRedamanDbm = outputTapDbm - odpSplitterIlDb;
                 const status = resolveStatus(hasilRedamanDbm, config.thresholds);
 
-                stages.push({
+                pushStage(stages, summary, {
                     kind: 'rasio_splitter',
                     name: next.name || node.name,
                     nodeIds: [node.id, next.id],
@@ -208,6 +291,8 @@ export function calculateTapChain(
                     odpSplitterIlDb,
                     hasilRedamanDbm,
                     status,
+                    branch: null,
+                    parentId: null,
                 });
 
                 power = outputThroughDbm;
@@ -216,7 +301,7 @@ export function calculateTapChain(
                 const hasilRedamanDbm = outputTapDbm;
                 const status = resolveStatus(hasilRedamanDbm, config.thresholds);
 
-                stages.push({
+                pushStage(stages, summary, {
                     kind: 'rasio',
                     name: node.name,
                     nodeIds: [node.id],
@@ -231,6 +316,8 @@ export function calculateTapChain(
                     odpSplitterIlDb: null,
                     hasilRedamanDbm,
                     status,
+                    branch: null,
+                    parentId: null,
                 });
 
                 power = outputThroughDbm;
@@ -241,7 +328,7 @@ export function calculateTapChain(
             const hasilRedamanDbm = power - odpSplitterIlDb;
             const status = resolveStatus(hasilRedamanDbm, config.thresholds);
 
-            stages.push({
+            pushStage(stages, summary, {
                 kind: 'splitter',
                 name: node.name,
                 nodeIds: [node.id],
@@ -256,36 +343,20 @@ export function calculateTapChain(
                 odpSplitterIlDb,
                 hasilRedamanDbm,
                 status,
+                branch: null,
+                parentId: null,
             });
 
             power = hasilRedamanDbm;
             i += 1;
         }
-
-        const last = stages[stages.length - 1];
-        summary.enabledCount++;
-        summary[last.status]++;
     }
 
     return { pathLoss, stages, summary };
 }
 
+/** Kanvas kosong: hanya SFP + redaman jalur default, tanpa kartu ODP. */
 export function buildInitialTapChain(config: PowerRxConfig): TapChainInput {
-    const taps = config.defaults.tap_percents;
-    const splitters = config.defaults.odp_splitters;
-    const nodes: FlowNode[] = [];
-
-    for (let index = 0; index < config.odp_count; index++) {
-        const n = index + 1;
-        nodes.push({
-            id: newNodeId(`combo-${n}`),
-            type: 'combo',
-            name: `ODP ${n}`,
-            tapPercent: taps[index] ?? 0,
-            odpSplitter: splitters[index] ?? 8,
-        });
-    }
-
     return {
         sfpPowerDbm: config.defaults.sfp_power_dbm,
         fiberM: config.defaults.fiber_m,
@@ -295,7 +366,7 @@ export function buildInitialTapChain(config: PowerRxConfig): TapChainInput {
         spliceCount: config.defaults.splice_count,
         spliceLossDbEach: config.defaults.splice_loss_db_each,
         designMarginDb: config.defaults.design_margin_db,
-        nodes,
+        nodes: [],
     };
 }
 
@@ -304,5 +375,17 @@ export function stageForNode(
     result: TapChainResult,
     nodeId: string,
 ): StageResult | undefined {
-    return result.stages.find((stage) => stage.nodeIds.includes(nodeId));
+    return result.stages.find(
+        (stage) => stage.nodeIds.includes(nodeId) && stage.branch === null,
+    );
+}
+
+export function branchStagesFor(
+    result: TapChainResult,
+    parentId: string,
+    port: BranchPort,
+): StageResult[] {
+    return result.stages.filter(
+        (stage) => stage.parentId === parentId && stage.branch === port,
+    );
 }

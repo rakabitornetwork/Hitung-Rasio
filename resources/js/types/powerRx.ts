@@ -2,6 +2,14 @@ export type PowerRxStatus = 'ok' | 'marginal' | 'overload' | 'fail';
 
 export type FlowNodeType = 'rasio' | 'splitter' | 'combo';
 
+export type BranchPort = 'hasil' | 'lanjut';
+
+export type BranchSplitter = {
+    id: string;
+    name: string;
+    odpSplitter: number;
+};
+
 export type RasioNode = {
     id: string;
     type: 'rasio';
@@ -22,6 +30,10 @@ export type ComboNode = {
     name: string;
     tapPercent: number | null;
     odpSplitter: number;
+    /** Splitter 1:N di jalur HASIL (dari hasil redaman kartu) */
+    hasilBranch: BranchSplitter[];
+    /** Splitter 1:N di jalur Lanjut (dari daya through) */
+    lanjutBranch: BranchSplitter[];
 };
 
 export type FlowNode = RasioNode | SplitterNode | ComboNode;
@@ -67,6 +79,9 @@ export type StageResult = {
     odpSplitterIlDb: number | null;
     hasilRedamanDbm: number;
     status: PowerRxStatus;
+    /** Cabang di kartu combo, bila ada */
+    branch: BranchPort | null;
+    parentId: string | null;
 };
 
 export type TapChainResult = {

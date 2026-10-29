@@ -1,8 +1,10 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useRef, useState } from 'react';
 import { Head } from '@inertiajs/react';
-import { Cable, RotateCcw } from 'lucide-react';
 import FlowBuilder from '@/Components/FlowBuilder';
+import IconPng from '@/Components/IconPng';
 import PathLossPanel from '@/Components/PathLossPanel';
+import UpdateButton from '@/Components/UpdateButton';
+import { ACTION_BUTTON_CLASS } from '@/lib/actionButton';
 import {
     buildInitialTapChain,
     calculateTapChain,
@@ -10,6 +12,7 @@ import {
     kindLabel,
     statusLabel,
 } from '@/lib/powerRx';
+import { downloadSaveFile, readSaveFile } from '@/lib/powerRxFile';
 import type {
     PathLossResult,
     PowerRxConfig,
@@ -69,6 +72,8 @@ function mapStage(raw: {
     odp_splitter_il_db: number | null;
     hasil_redaman_dbm: number;
     status: PowerRxStatus;
+    branch?: 'hasil' | 'lanjut' | null;
+    parent_id?: string | null;
 }): StageResult {
     return {
         kind: raw.kind,
@@ -85,6 +90,8 @@ function mapStage(raw: {
         odpSplitterIlDb: raw.odp_splitter_il_db,
         hasilRedamanDbm: raw.hasil_redaman_dbm,
         status: raw.status,
+        branch: raw.branch ?? null,
+        parentId: raw.parent_id ?? null,
     };
 }
 
@@ -123,7 +130,9 @@ export default function Index({ config }: Props) {
     const [chain, setChain] = useState<TapChainInput>(() => buildInitialTapChain(config));
     const [serverResult, setServerResult] = useState<TapChainResult | null>(null);
     const [serverError, setServerError] = useState<string | null>(null);
+    const [fileMessage, setFileMessage] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const liveResult = useMemo(
         () =>
@@ -152,6 +161,35 @@ export default function Index({ config }: Props) {
         setChain(buildInitialTapChain(config));
         setServerResult(null);
         setServerError(null);
+        setFileMessage(null);
+    }
+
+    function saveToFile() {
+        downloadSaveFile(chain);
+        setFileMessage('File berhasil disimpan.');
+        setServerError(null);
+    }
+
+    async function loadFromFile(file: File | null) {
+        if (!file) {
+            return;
+        }
+
+        try {
+            const loaded = await readSaveFile(file);
+            handleChainChange(loaded);
+            setFileMessage(`File dimuat: ${file.name}`);
+            setServerError(null);
+        } catch (error) {
+            setFileMessage(null);
+            setServerError(
+                error instanceof Error ? error.message : 'Gagal memuat file.',
+            );
+        } finally {
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
     }
 
     async function handleOfficialCalculate(event: FormEvent) {
@@ -198,6 +236,16 @@ export default function Index({ config }: Props) {
                                 name: node.name,
                                 tap_percent: node.tapPercent ?? 0,
                                 odp_splitter: node.odpSplitter,
+                                hasil_branch: node.hasilBranch.map((item) => ({
+                                    id: item.id,
+                                    name: item.name,
+                                    odp_splitter: item.odpSplitter,
+                                })),
+                                lanjut_branch: node.lanjutBranch.map((item) => ({
+                                    id: item.id,
+                                    name: item.name,
+                                    odp_splitter: item.odpSplitter,
+                                })),
                             };
                         }
 
@@ -279,11 +327,16 @@ export default function Index({ config }: Props) {
                             <tbody>
                                 {displayed.stages.map((stage) => (
                                     <tr
-                                        key={stage.nodeIds.join('-')}
+                                        key={`${stage.nodeIds.join('-')}-${stage.branch ?? 'main'}`}
                                         className="border-t border-line"
                                     >
                                         <td className="px-3 py-2 font-medium text-ink">
                                             {stage.name}
+                                            {stage.branch && (
+                                                <span className="ml-1 text-[10px] font-normal text-ink-soft">
+                                                    ({stage.branch})
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-3 py-2 text-xs text-ink-soft">
                                             {kindLabel(stage.kind)}
@@ -323,25 +376,64 @@ export default function Index({ config }: Props) {
                         </table>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-ink/90 disabled:opacity-60"
-                        >
-                            <Cable className="size-4" />
-                            {isSubmitting ? 'Menghitung…' : 'Hitung resmi (server)'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={resetForm}
-                            className="inline-flex items-center gap-2 rounded-md border border-line bg-white px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-paper"
-                        >
-                            <RotateCcw className="size-4" />
-                            Reset contoh
-                        </button>
-                        {serverError && (
-                            <p className="text-sm text-danger">{serverError}</p>
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className={`${ACTION_BUTTON_CLASS} bg-signal hover:bg-signal-deep`}
+                            >
+                                <IconPng name="hitung" size={16} alt="" />
+                                <span>
+                                    {isSubmitting ? 'Menghitung…' : 'Hitung'}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={saveToFile}
+                                className={`${ACTION_BUTTON_CLASS} bg-sky-600 hover:bg-sky-700`}
+                            >
+                                <IconPng name="simpan" size={16} alt="" />
+                                <span>Simpan</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`${ACTION_BUTTON_CLASS} bg-emerald-600 hover:bg-emerald-700`}
+                            >
+                                <IconPng name="muat" size={16} alt="" />
+                                <span>Muat</span>
+                            </button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="application/json,.json"
+                                className="hidden"
+                                onChange={(e) =>
+                                    void loadFromFile(
+                                        e.target.files?.[0] ?? null,
+                                    )
+                                }
+                            />
+                            <button
+                                type="button"
+                                onClick={resetForm}
+                                className={`${ACTION_BUTTON_CLASS} border-amber-600/40 bg-amber-500 hover:bg-amber-600`}
+                            >
+                                <IconPng name="reset" size={16} alt="" />
+                                <span>Reset</span>
+                            </button>
+                            <UpdateButton />
+                        </div>
+                        {(fileMessage || serverError) && (
+                            <div className="flex flex-wrap gap-3 text-sm">
+                                {fileMessage && (
+                                    <p className="text-ok">{fileMessage}</p>
+                                )}
+                                {serverError && (
+                                    <p className="text-danger">{serverError}</p>
+                                )}
+                            </div>
                         )}
                     </div>
                 </form>

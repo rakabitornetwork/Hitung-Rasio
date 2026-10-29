@@ -6,7 +6,13 @@ type IconName =
     | 'fiber'
     | 'connector'
     | 'splice'
-    | 'hasil';
+    | 'hasil'
+    | 'reset'
+    | 'hitung'
+    | 'simpan'
+    | 'muat'
+    | 'update'
+    | 'update-ok';
 
 type Props = {
     name: IconName;
@@ -24,6 +30,12 @@ const SRC: Record<IconName, string> = {
     connector: '/images/icons/connector.png',
     splice: '/images/icons/splice.png',
     hasil: '/images/icons/hasil.png',
+    reset: '/images/icons/reset.png',
+    hitung: '/images/icons/hitung.png',
+    simpan: '/images/icons/simpan.png',
+    muat: '/images/icons/muat.png',
+    update: '/images/icons/update.png',
+    'update-ok': '/images/icons/update-ok.png',
 };
 
 export default function IconPng({
@@ -38,7 +50,8 @@ export default function IconPng({
             alt={alt ?? name}
             width={size}
             height={size}
-            className={`inline-block object-contain ${className}`}
+            className={`inline-block shrink-0 object-contain align-middle ${className}`}
+            style={{ width: size, height: size }}
             draggable={false}
         />
     );

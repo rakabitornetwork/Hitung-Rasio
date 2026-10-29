@@ -8,37 +8,14 @@ class PowerRxCalculator
 {
     /**
      * Rantai modular:
-     * SFP − redaman jalur → [rasio | splitter | rasio+splitter berurutan] …
+     * SFP − redaman jalur → [combo | rasio | splitter] …
      *
-     * - combo / rasio+splitter berurutan → model YapsiNET (tap → splitter → hasil; through lanjut)
-     * - rasio saja → hasil = output tap; through lanjut
-     * - splitter saja → hasil = input − IL 1:N; rantai lanjut dari hasil
+     * Combo menghasilkan HASIL (tap→1:N) dan Lanjut (through).
+     * Opsional: splitter 1:N di cabang hasil dan/atau cabang lanjut.
+     * Daya ke node berikutnya di rantai utama = ujung cabang lanjut (atau through mentah).
      *
-     * @param  array{
-     *     sfp_power_dbm: float|int,
-     *     fiber_m?: float|int|null,
-     *     attenuation_db_per_km?: float|int|null,
-     *     connector_count?: int|null,
-     *     connector_loss_db_each?: float|int|null,
-     *     splice_count?: int|null,
-     *     splice_loss_db_each?: float|int|null,
-     *     design_margin_db?: float|int|null,
-     *     nodes?: list<array{id?: string, type: string, name?: string, tap_percent?: int, odp_splitter?: int}>,
-     *     odps?: list<array{name: string, tap_percent: int, odp_splitter: int, enabled?: bool}>
-     * }  $input
-     * @return array{
-     *     path_loss: array{
-     *         fiber_db: float,
-     *         connector_db: float,
-     *         splice_db: float,
-     *         design_margin_db: float,
-     *         total_db: float,
-     *         sfp_after_path_dbm: float
-     *     },
-     *     stages: list<array<string, mixed>>,
-     *     odps: list<array<string, mixed>>,
-     *     summary: array{enabled_count: int, ok: int, marginal: int, overload: int, fail: int}
-     * }
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
      */
     public function calculateTapChain(array $input): array
     {
@@ -88,36 +65,8 @@ class PowerRxCalculator
             $type = $node['type'] ?? '';
 
             if ($type === 'combo') {
-                $tapPercent = (int) ($node['tap_percent'] ?? 0);
-                $throughPercent = 100 - $tapPercent;
-                $tapIl = $this->rasioInsertionLoss($tapPercent);
-                $throughIl = $this->rasioInsertionLoss($throughPercent);
-                $odpSplitter = (int) ($node['odp_splitter'] ?? 8);
-                $odpIl = $this->odpSplitterInsertionLoss($odpSplitter);
-                $outputTap = $power - $tapIl;
-                $outputThrough = $power - $throughIl;
-                $hasil = $outputTap - $odpIl;
-                $status = $this->resolveStatus($hasil);
-
-                $stages[] = [
-                    'kind' => 'rasio_splitter',
-                    'name' => (string) ($node['name'] ?? 'ODP'),
-                    'node_ids' => [(string) ($node['id'] ?? "combo-{$i}")],
-                    'input_power_dbm' => $power,
-                    'tap_percent' => $tapPercent,
-                    'through_percent' => $throughPercent,
-                    'tap_il_db' => $tapIl,
-                    'through_il_db' => $throughIl,
-                    'output_tap_dbm' => $outputTap,
-                    'output_through_dbm' => $outputThrough,
-                    'odp_splitter' => $odpSplitter,
-                    'odp_splitter_il_db' => $odpIl,
-                    'hasil_redaman_dbm' => $hasil,
-                    'status' => $status,
-                ];
-
+                $power = $this->appendComboStages($node, $power, $stages, $summary);
                 $i++;
-                $power = $outputThrough;
             } elseif ($type === 'rasio') {
                 $next = $nodes[$i + 1] ?? null;
                 $tapPercent = (int) ($node['tap_percent'] ?? 0);
@@ -133,11 +82,10 @@ class PowerRxCalculator
                     $odpIl = $this->odpSplitterInsertionLoss($odpSplitter);
                     $hasil = $outputTap - $odpIl;
                     $status = $this->resolveStatus($hasil);
-                    $pairName = (string) ($next['name'] ?? $name);
 
-                    $stages[] = [
+                    $this->pushStage($stages, $summary, [
                         'kind' => 'rasio_splitter',
-                        'name' => $pairName,
+                        'name' => (string) ($next['name'] ?? $name),
                         'node_ids' => [
                             (string) ($node['id'] ?? "rasio-{$i}"),
                             (string) ($next['id'] ?? 'splitter-'.($i + 1)),
@@ -153,7 +101,9 @@ class PowerRxCalculator
                         'odp_splitter_il_db' => $odpIl,
                         'hasil_redaman_dbm' => $hasil,
                         'status' => $status,
-                    ];
+                        'branch' => null,
+                        'parent_id' => null,
+                    ]);
 
                     $i += 2;
                     $power = $outputThrough;
@@ -161,7 +111,7 @@ class PowerRxCalculator
                     $hasil = $outputTap;
                     $status = $this->resolveStatus($hasil);
 
-                    $stages[] = [
+                    $this->pushStage($stages, $summary, [
                         'kind' => 'rasio',
                         'name' => $name,
                         'node_ids' => [(string) ($node['id'] ?? "rasio-{$i}")],
@@ -176,7 +126,9 @@ class PowerRxCalculator
                         'odp_splitter_il_db' => null,
                         'hasil_redaman_dbm' => $hasil,
                         'status' => $status,
-                    ];
+                        'branch' => null,
+                        'parent_id' => null,
+                    ]);
 
                     $i++;
                     $power = $outputThrough;
@@ -186,11 +138,10 @@ class PowerRxCalculator
                 $odpIl = $this->odpSplitterInsertionLoss($odpSplitter);
                 $hasil = $power - $odpIl;
                 $status = $this->resolveStatus($hasil);
-                $name = (string) ($node['name'] ?? 'Splitter');
 
-                $stages[] = [
+                $this->pushStage($stages, $summary, [
                     'kind' => 'splitter',
-                    'name' => $name,
+                    'name' => (string) ($node['name'] ?? 'Splitter'),
                     'node_ids' => [(string) ($node['id'] ?? "splitter-{$i}")],
                     'input_power_dbm' => $power,
                     'tap_percent' => null,
@@ -203,20 +154,17 @@ class PowerRxCalculator
                     'odp_splitter_il_db' => $odpIl,
                     'hasil_redaman_dbm' => $hasil,
                     'status' => $status,
-                ];
+                    'branch' => null,
+                    'parent_id' => null,
+                ]);
 
                 $i++;
                 $power = $hasil;
             } else {
                 throw new InvalidArgumentException("Tipe node tidak dikenal: {$type}");
             }
-
-            $last = $stages[array_key_last($stages)];
-            $summary['enabled_count']++;
-            $summary[$last['status']]++;
         }
 
-        // Compat: odps = stages berbentuk pasangan / hasil (untuk UI lama & tes Excel).
         $odps = array_map(function (array $stage): array {
             return [
                 'name' => $stage['name'],
@@ -233,7 +181,10 @@ class PowerRxCalculator
                 'hasil_redaman_dbm' => $stage['hasil_redaman_dbm'],
                 'status' => $stage['status'],
             ];
-        }, $stages);
+        }, array_values(array_filter(
+            $stages,
+            fn (array $s): bool => ($s['branch'] ?? null) === null,
+        )));
 
         return [
             'path_loss' => $pathLoss,
@@ -244,8 +195,126 @@ class PowerRxCalculator
     }
 
     /**
+     * @param  array<string, mixed>  $node
+     * @param  list<array<string, mixed>>  $stages
+     * @param  array<string, int>  $summary
+     */
+    private function appendComboStages(array $node, float $power, array &$stages, array &$summary): float
+    {
+        $parentId = (string) ($node['id'] ?? 'combo');
+        $tapPercent = (int) ($node['tap_percent'] ?? 0);
+        $throughPercent = 100 - $tapPercent;
+        $tapIl = $this->rasioInsertionLoss($tapPercent);
+        $throughIl = $this->rasioInsertionLoss($throughPercent);
+        $odpSplitter = (int) ($node['odp_splitter'] ?? 8);
+        $odpIl = $this->odpSplitterInsertionLoss($odpSplitter);
+        $outputTap = $power - $tapIl;
+        $outputThrough = $power - $throughIl;
+        $hasil = $outputTap - $odpIl;
+        $status = $this->resolveStatus($hasil);
+
+        $this->pushStage($stages, $summary, [
+            'kind' => 'rasio_splitter',
+            'name' => (string) ($node['name'] ?? 'ODP'),
+            'node_ids' => [$parentId],
+            'input_power_dbm' => $power,
+            'tap_percent' => $tapPercent,
+            'through_percent' => $throughPercent,
+            'tap_il_db' => $tapIl,
+            'through_il_db' => $throughIl,
+            'output_tap_dbm' => $outputTap,
+            'output_through_dbm' => $outputThrough,
+            'odp_splitter' => $odpSplitter,
+            'odp_splitter_il_db' => $odpIl,
+            'hasil_redaman_dbm' => $hasil,
+            'status' => $status,
+            'branch' => null,
+            'parent_id' => null,
+        ]);
+
+        $hasilPower = $hasil;
+        foreach ($node['hasil_branch'] ?? [] as $branchNode) {
+            $hasilPower = $this->appendBranchSplitter(
+                $branchNode,
+                $hasilPower,
+                'hasil',
+                $parentId,
+                $stages,
+                $summary,
+            );
+        }
+
+        $lanjutPower = $outputThrough;
+        foreach ($node['lanjut_branch'] ?? [] as $branchNode) {
+            $lanjutPower = $this->appendBranchSplitter(
+                $branchNode,
+                $lanjutPower,
+                'lanjut',
+                $parentId,
+                $stages,
+                $summary,
+            );
+        }
+
+        // Rantai utama berikutnya selalu dari jalur lanjut (setelah cascade lanjut bila ada).
+        return $lanjutPower;
+    }
+
+    /**
+     * @param  array<string, mixed>  $branchNode
+     * @param  list<array<string, mixed>>  $stages
+     * @param  array<string, int>  $summary
+     */
+    private function appendBranchSplitter(
+        array $branchNode,
+        float $power,
+        string $branch,
+        string $parentId,
+        array &$stages,
+        array &$summary,
+    ): float {
+        $odpSplitter = (int) ($branchNode['odp_splitter'] ?? 8);
+        $odpIl = $this->odpSplitterInsertionLoss($odpSplitter);
+        $hasil = $power - $odpIl;
+        $status = $this->resolveStatus($hasil);
+
+        $this->pushStage($stages, $summary, [
+            'kind' => 'splitter',
+            'name' => (string) ($branchNode['name'] ?? 'Splitter'),
+            'node_ids' => [(string) ($branchNode['id'] ?? uniqid('br-'))],
+            'input_power_dbm' => $power,
+            'tap_percent' => null,
+            'through_percent' => null,
+            'tap_il_db' => null,
+            'through_il_db' => null,
+            'output_tap_dbm' => null,
+            'output_through_dbm' => $hasil,
+            'odp_splitter' => $odpSplitter,
+            'odp_splitter_il_db' => $odpIl,
+            'hasil_redaman_dbm' => $hasil,
+            'status' => $status,
+            'branch' => $branch,
+            'parent_id' => $parentId,
+        ]);
+
+        return $hasil;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $stages
+     * @param  array<string, int>  $summary
+     * @param  array<string, mixed>  $stage
+     */
+    private function pushStage(array &$stages, array &$summary, array $stage): void
+    {
+        $stages[] = $stage;
+        $summary['enabled_count']++;
+        $summary[$stage['status']]++;
+    }
+
+    /**
      * @param  list<array{name: string, tap_percent: int, odp_splitter: int, enabled?: bool}>  $odps
-     * @return list<array{id: string, type: string, name: string, tap_percent?: int, odp_splitter?: int}>
+     * @return list<array<string, mixed>>
      */
     public function nodesFromLegacyOdps(array $odps): array
     {
@@ -259,6 +328,8 @@ class PowerRxCalculator
                 'name' => $odp['name'],
                 'tap_percent' => (int) $odp['tap_percent'],
                 'odp_splitter' => (int) $odp['odp_splitter'],
+                'hasil_branch' => [],
+                'lanjut_branch' => [],
             ];
         }
 

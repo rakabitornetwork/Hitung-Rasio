@@ -120,4 +120,61 @@ class PowerRxNetworkTest extends TestCase
         $this->assertSame('splitter', $splitterOnly['stages'][0]['kind']);
         $this->assertEqualsWithDelta(-3.0, $splitterOnly['stages'][0]['hasil_redaman_dbm'], 0.01);
     }
+
+    #[Test]
+    public function it_attaches_splitters_on_hasil_and_lanjut_branches(): void
+    {
+        $calculator = new PowerRxCalculator;
+
+        $result = $calculator->calculateTapChain([
+            'sfp_power_dbm' => 7.0,
+            'nodes' => [
+                [
+                    'id' => 'c1',
+                    'type' => 'combo',
+                    'name' => 'ODP 1',
+                    'tap_percent' => 4,
+                    'odp_splitter' => 8,
+                    'hasil_branch' => [
+                        [
+                            'id' => 'bh1',
+                            'name' => 'Hasil 1:8',
+                            'odp_splitter' => 8,
+                        ],
+                    ],
+                    'lanjut_branch' => [
+                        [
+                            'id' => 'bl1',
+                            'name' => 'Lanjut 1:4',
+                            'odp_splitter' => 4,
+                        ],
+                    ],
+                ],
+                [
+                    'id' => 'c2',
+                    'type' => 'combo',
+                    'name' => 'ODP 2',
+                    'tap_percent' => 4,
+                    'odp_splitter' => 8,
+                    'hasil_branch' => [],
+                    'lanjut_branch' => [],
+                ],
+            ],
+        ]);
+
+        // Combo: hasil −17.23, lanjut 6.57
+        $this->assertEqualsWithDelta(-17.23, $result['stages'][0]['hasil_redaman_dbm'], 0.01);
+        $this->assertEqualsWithDelta(6.57, $result['stages'][0]['output_through_dbm'], 0.01);
+
+        // Cabang HASIL dari −17.23 − 10 = −27.23
+        $this->assertSame('hasil', $result['stages'][1]['branch']);
+        $this->assertEqualsWithDelta(-17.23, $result['stages'][1]['input_power_dbm'], 0.01);
+        $this->assertEqualsWithDelta(-27.23, $result['stages'][1]['hasil_redaman_dbm'], 0.01);
+
+        // Cabang Lanjut dari 6.57 − 7 = −0.43; ODP2 input = ujung lanjut
+        $this->assertSame('lanjut', $result['stages'][2]['branch']);
+        $this->assertEqualsWithDelta(6.57, $result['stages'][2]['input_power_dbm'], 0.01);
+        $this->assertEqualsWithDelta(-0.43, $result['stages'][2]['hasil_redaman_dbm'], 0.01);
+        $this->assertEqualsWithDelta(-0.43, $result['stages'][3]['input_power_dbm'], 0.01);
+    }
 }
