@@ -468,10 +468,16 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
 
                 <div className="relative flex min-w-max items-center gap-0 px-2 py-6">
                     <div className="relative z-10 flex flex-col items-center">
-                        <button
-                            type="button"
+                        <div
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setSelectedId(null)}
-                            className={`w-36 rounded-2xl border-2 bg-white p-3 text-left shadow-md transition ${
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    setSelectedId(null);
+                                }
+                            }}
+                            className={`w-40 rounded-2xl border-2 bg-white p-3 text-left shadow-md transition ${
                                 selectedId === null
                                     ? 'border-signal ring-2 ring-signal/30'
                                     : 'border-line hover:border-signal/50'
@@ -483,10 +489,32 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                             <p className="text-[10px] font-semibold tracking-wide text-ink-soft uppercase">
                                 SFP
                             </p>
-                            <p className="font-mono text-lg font-semibold text-ink">
-                                {formatDb(asNumber(chain.sfpPowerDbm, 7))} dBm
-                            </p>
-                        </button>
+                            <label
+                                className="mt-1 block"
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => e.stopPropagation()}
+                            >
+                                <span className="sr-only">Daya TX (dBm)</span>
+                                <div className="flex items-center gap-1">
+                                    <input
+                                        type="number"
+                                        step={0.1}
+                                        value={chain.sfpPowerDbm ?? ''}
+                                        onChange={(e) =>
+                                            updateSfp(
+                                                parseOptionalNumber(
+                                                    e.target.value,
+                                                ),
+                                            )
+                                        }
+                                        className="w-full rounded-md border border-signal/30 bg-paper px-2 py-1 font-mono text-sm font-semibold text-ink outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
+                                    />
+                                    <span className="shrink-0 text-[10px] font-medium text-ink-soft">
+                                        dBm
+                                    </span>
+                                </div>
+                            </label>
+                        </div>
                         <p className="mt-2 text-center text-[10px] text-ink-soft">
                             Sumber
                             {result.pathLoss.totalDb > 0 && (
@@ -537,6 +565,9 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                                         config={config}
                                         selected={selectedId === node.id}
                                         onSelect={() => setSelectedId(node.id)}
+                                        onChange={(patch) =>
+                                            updateNode(node.id, patch)
+                                        }
                                         onRemove={() => removeNode(node.id)}
                                         onDropBranch={(port) =>
                                             handleBranchDrop(node.id, port)
@@ -569,47 +600,49 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                                             },
                                         }}
                                     />
-                                ) : (
-                                    <div
-                                        draggable
-                                        onDragStart={(e) =>
-                                            onNodeDragStart(e, index)
+                                ) : node.type === 'rasio' ? (
+                                    <RasioCard
+                                        node={node}
+                                        stage={stage}
+                                        selected={selectedId === node.id}
+                                        paired={paired}
+                                        onSelect={() => setSelectedId(node.id)}
+                                        onChange={(patch) =>
+                                            updateNode(node.id, patch)
                                         }
-                                        onDragEnd={() => {
-                                            setDragOverIndex(null);
-                                            clearDrag();
+                                        onRemove={() => removeNode(node.id)}
+                                        dragHandleProps={{
+                                            draggable: true,
+                                            onDragStart: (e) =>
+                                                onNodeDragStart(e, index),
+                                            onDragEnd: () => {
+                                                setDragOverIndex(null);
+                                                clearDrag();
+                                            },
                                         }}
-                                    >
-                                        {node.type === 'rasio' ? (
-                                            <RasioCard
-                                                node={node}
-                                                stage={stage}
-                                                selected={selectedId === node.id}
-                                                paired={paired}
-                                                onSelect={() =>
-                                                    setSelectedId(node.id)
-                                                }
-                                                onRemove={() =>
-                                                    removeNode(node.id)
-                                                }
-                                            />
-                                        ) : (
-                                            <SplitterCard
-                                                node={node}
-                                                stage={stage}
-                                                selected={
-                                                    selectedId === node.id
-                                                }
-                                                fromTap={isTapChild}
-                                                onSelect={() =>
-                                                    setSelectedId(node.id)
-                                                }
-                                                onRemove={() =>
-                                                    removeNode(node.id)
-                                                }
-                                            />
-                                        )}
-                                    </div>
+                                    />
+                                ) : (
+                                    <SplitterCard
+                                        node={node}
+                                        stage={stage}
+                                        config={config}
+                                        selected={selectedId === node.id}
+                                        fromTap={isTapChild}
+                                        onSelect={() => setSelectedId(node.id)}
+                                        onChange={(patch) =>
+                                            updateNode(node.id, patch)
+                                        }
+                                        onRemove={() => removeNode(node.id)}
+                                        dragHandleProps={{
+                                            draggable: true,
+                                            onDragStart: (e) =>
+                                                onNodeDragStart(e, index),
+                                            onDragEnd: () => {
+                                                setDragOverIndex(null);
+                                                clearDrag();
+                                            },
+                                        }}
+                                    />
                                 )}
                                 <DropSlot
                                     active={dragOverIndex === index + 1}
@@ -646,8 +679,12 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
             </section>
 
             <aside className="rounded-2xl border border-line bg-white/80 p-4 shadow-sm">
-                <p className="mb-3 text-xs font-semibold tracking-wide text-ink uppercase">
+                <p className="mb-1 text-xs font-semibold tracking-wide text-ink uppercase">
                     Pengaturan
+                </p>
+                <p className="mb-3 text-[11px] text-ink-soft">
+                    Nilai utama bisa diubah langsung di kartu kanvas. Panel ini
+                    untuk nama dan ringkasan.
                 </p>
 
                 {selectedNode === null ? (
@@ -656,21 +693,12 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                             <IconPng name="sfp" size={22} alt="SFP" />
                             <span className="text-sm font-semibold">SFP</span>
                         </div>
-                        <label className="block text-sm font-medium text-ink">
-                            Daya TX (dBm)
-                        </label>
-                        <input
-                            type="number"
-                            step={1}
-                            value={chain.sfpPowerDbm ?? ''}
-                            onChange={(e) =>
-                                updateSfp(parseOptionalNumber(e.target.value))
-                            }
-                            className="w-full rounded-md border border-line bg-white px-3 py-2 font-mono outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
-                        />
+                        <p className="font-mono text-lg font-semibold text-ink">
+                            {formatDb(asNumber(chain.sfpPowerDbm, 7))} dBm
+                        </p>
                         <p className="text-xs text-ink-soft">
-                            Seret kartu gabungan (rasio + 1:N) atau komponen terpisah ke
-                            kanvas.
+                            Ubah daya TX di kartu SFP pada kanvas. Seret kartu
+                            gabungan atau komponen terpisah ke kanvas.
                         </p>
                     </div>
                 ) : selectedNode.type === 'combo' ? (
@@ -851,6 +879,7 @@ function ComboCard({
     config,
     selected,
     onSelect,
+    onChange,
     onRemove,
     onDropBranch,
     onAddBranch,
@@ -864,6 +893,7 @@ function ComboCard({
     config: PowerRxConfig;
     selected: boolean;
     onSelect: () => void;
+    onChange: (patch: Partial<ComboNode>) => void;
     onRemove: () => void;
     onDropBranch: (port: BranchPort) => void;
     onAddBranch: (port: BranchPort) => void;
@@ -884,6 +914,7 @@ function ComboCard({
         hasilStages.length > 0
             ? hasilStages[hasilStages.length - 1].hasilRedamanDbm
             : stage?.hasilRedamanDbm;
+    const tap = asNumber(node.tapPercent, 0);
 
     return (
         <div
@@ -911,16 +942,59 @@ function ComboCard({
                     <p className="text-[10px] text-violet-800">Rasio + 1:N</p>
                 </div>
             </div>
-            <div className="space-y-1.5">
-                <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5">
-                    <IconPng name="rasio" size={16} alt="Rasio" />
-                    <p className="font-mono text-xs font-semibold text-sky-950">
-                        {asNumber(node.tapPercent, 0)}/{100 - asNumber(node.tapPercent, 0)}%
-                    </p>
+            <div
+                className="space-y-1.5"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+            >
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5">
+                    <div className="mb-1 flex items-center gap-2">
+                        <IconPng name="rasio" size={16} alt="Rasio" />
+                        <span className="text-[10px] font-semibold text-sky-900">
+                            Tap %
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <input
+                            type="number"
+                            step={1}
+                            min={0}
+                            max={99}
+                            value={node.tapPercent ?? ''}
+                            onChange={(e) =>
+                                onChange({
+                                    tapPercent: parseOptionalNumber(
+                                        e.target.value,
+                                    ),
+                                })
+                            }
+                            className="w-full rounded border border-sky-200 bg-white px-1.5 py-0.5 font-mono text-xs font-semibold text-sky-950 outline-none focus:border-signal"
+                        />
+                        <span className="shrink-0 font-mono text-[10px] text-sky-900/80">
+                            / {100 - tap}%
+                        </span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 rounded-lg border border-line bg-paper px-2 py-1.5">
-                    <IconPng name="splitter" size={16} alt="Splitter" />
-                    <p className="font-mono text-xs font-semibold">1:{node.odpSplitter}</p>
+                <div className="rounded-lg border border-line bg-paper px-2 py-1.5">
+                    <div className="mb-1 flex items-center gap-2">
+                        <IconPng name="splitter" size={16} alt="Splitter" />
+                        <span className="text-[10px] font-semibold text-ink">
+                            Splitter 1:N
+                        </span>
+                    </div>
+                    <select
+                        value={node.odpSplitter}
+                        onChange={(e) =>
+                            onChange({ odpSplitter: Number(e.target.value) })
+                        }
+                        className="w-full rounded border border-line bg-white px-1.5 py-0.5 font-mono text-xs font-semibold outline-none focus:border-signal"
+                    >
+                        {config.allowed_odp_splitters.map((ratio) => (
+                            <option key={ratio} value={ratio}>
+                                1:{ratio}
+                            </option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -1150,15 +1224,25 @@ function RasioCard({
     selected,
     paired,
     onSelect,
+    onChange,
     onRemove,
+    dragHandleProps,
 }: {
     node: RasioNode;
     stage?: StageResult;
     selected: boolean;
     paired: boolean;
     onSelect: () => void;
+    onChange: (patch: Partial<RasioNode>) => void;
     onRemove: () => void;
+    dragHandleProps: {
+        draggable: boolean;
+        onDragStart: (event: DragEvent) => void;
+        onDragEnd: () => void;
+    };
 }) {
+    const tap = asNumber(node.tapPercent, 0);
+
     return (
         <div
             role="button"
@@ -1175,7 +1259,7 @@ function RasioCard({
                     : 'border-line hover:border-sky-300'
             }`}
         >
-            <CardChrome onRemove={onRemove} />
+            <CardChrome onRemove={onRemove} dragHandleProps={dragHandleProps} />
             <div className="mb-2 flex items-center gap-2">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-sky-100">
                     <IconPng name="rasio" size={28} alt="Rasio" />
@@ -1187,9 +1271,34 @@ function RasioCard({
                     </p>
                 </div>
             </div>
-            <p className="font-mono text-sm font-semibold text-sky-950">
-                {asNumber(node.tapPercent, 0)}/{100 - asNumber(node.tapPercent, 0)}%
-            </p>
+            <label
+                className="block"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+            >
+                <span className="mb-1 block text-[10px] font-semibold text-sky-900">
+                    Tap %
+                </span>
+                <div className="flex items-center gap-1">
+                    <input
+                        type="number"
+                        step={1}
+                        min={0}
+                        max={99}
+                        value={node.tapPercent ?? ''}
+                        onChange={(e) =>
+                            onChange({
+                                tapPercent: parseOptionalNumber(e.target.value),
+                            })
+                        }
+                        className="w-full rounded-md border border-sky-200 bg-sky-50 px-2 py-1 font-mono text-sm font-semibold text-sky-950 outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
+                    />
+                    <span className="shrink-0 font-mono text-[10px] text-sky-900/80">
+                        / {100 - tap}%
+                    </span>
+                </div>
+            </label>
             {stage && (
                 <p className="mt-2 font-mono text-[10px] text-red-700">
                     Lanjut {formatDb(stage.outputThroughDbm ?? 0)} dBm
@@ -1202,17 +1311,27 @@ function RasioCard({
 function SplitterCard({
     node,
     stage,
+    config,
     selected,
     fromTap,
     onSelect,
+    onChange,
     onRemove,
+    dragHandleProps,
 }: {
     node: SplitterNode;
     stage?: StageResult;
+    config: PowerRxConfig;
     selected: boolean;
     fromTap: boolean;
     onSelect: () => void;
+    onChange: (patch: Partial<SplitterNode>) => void;
     onRemove: () => void;
+    dragHandleProps: {
+        draggable: boolean;
+        onDragStart: (event: DragEvent) => void;
+        onDragEnd: () => void;
+    };
 }) {
     const sourceLabel = fromTap ? 'Dari tap rasio' : 'Standalone';
 
@@ -1232,7 +1351,7 @@ function SplitterCard({
                     : 'border-line hover:border-emerald-300'
             }`}
         >
-            <CardChrome onRemove={onRemove} />
+            <CardChrome onRemove={onRemove} dragHandleProps={dragHandleProps} />
             <div className="mb-2 flex items-center gap-2">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-100">
                     <IconPng name="splitter" size={28} alt="Splitter" />
@@ -1242,7 +1361,29 @@ function SplitterCard({
                     <p className="text-[10px] text-emerald-800">{sourceLabel}</p>
                 </div>
             </div>
-            <p className="font-mono text-sm font-semibold text-ink">1:{node.odpSplitter}</p>
+            <label
+                className="block"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+            >
+                <span className="mb-1 block text-[10px] font-semibold text-ink">
+                    Splitter 1:N
+                </span>
+                <select
+                    value={node.odpSplitter}
+                    onChange={(e) =>
+                        onChange({ odpSplitter: Number(e.target.value) })
+                    }
+                    className="w-full rounded-md border border-line bg-paper px-2 py-1 font-mono text-sm font-semibold outline-none focus:border-signal focus:ring-2 focus:ring-signal/20"
+                >
+                    {config.allowed_odp_splitters.map((ratio) => (
+                        <option key={ratio} value={ratio}>
+                            1:{ratio}
+                        </option>
+                    ))}
+                </select>
+            </label>
             {stage && (
                 <div className="mt-2 rounded-lg bg-ink px-2 py-1.5 text-white">
                     <p className="text-[10px] text-white/60 uppercase">Hasil</p>
