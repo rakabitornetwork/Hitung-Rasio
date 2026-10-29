@@ -60,7 +60,7 @@
     "src": "_ibm-plex-sans-700-normal-Bxkt5Cjx.woff2"
   },
   "resources/css/app.css": {
-    "file": "assets/app-Bn2oYStb.css",
+    "file": "assets/app-EJflYmnv.css",
     "name": "app",
     "names": [
       "app.css"
@@ -69,7 +69,7 @@
     "isEntry": true
   },
   "resources/js/Pages/PowerRx/Index.tsx": {
-    "file": "assets/Index-KknZt12O.js",
+    "file": "assets/Index-BVCER8Fl.js",
     "name": "Index",
     "src": "resources/js/Pages/PowerRx/Index.tsx",
     "isDynamicEntry": true,
@@ -78,7 +78,7 @@
     ]
   },
   "resources/js/app.tsx": {
-    "file": "assets/app-DR0IU0xJ.js",
+    "file": "assets/app-kcoWEtsc.js",
     "name": "app",
     "src": "resources/js/app.tsx",
     "isEntry": true,
@@ -86,7 +86,7 @@
       "resources/js/Pages/PowerRx/Index.tsx"
     ],
     "css": [
-      "assets/app-Bn2oYStb.css"
+      "assets/app-EJflYmnv.css"
     ]
   }
 }

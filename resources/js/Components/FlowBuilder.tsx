@@ -4,7 +4,7 @@ import {
     useRef,
     useState,
 } from 'react';
-import { ChevronRight, GripVertical, Trash2 } from 'lucide-react';
+import { ChevronRight, GripVertical, Plus, Trash2 } from 'lucide-react';
 import IconPng from '@/Components/IconPng';
 import {
     asNumber,
@@ -408,8 +408,13 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                     Komponen
                 </p>
                 <p className="mb-3 text-xs text-ink-soft">
-                    Seret ke kanvas. Pakai kartu gabungan (rasio + 1:N), atau komponen
-                    terpisah.
+                    <span className="md:hidden">
+                        Ketuk tombol + untuk menambah ke kanvas.
+                    </span>
+                    <span className="hidden md:inline">
+                        Seret ke kanvas. Pakai kartu gabungan (rasio + 1:N), atau
+                        komponen terpisah.
+                    </span>
                 </p>
                 <div className="space-y-2">
                     <PaletteItem
@@ -418,6 +423,8 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                         subtitle="Sumber daya TX"
                         color="bg-signal/15"
                         onDragStart={(e) => onPaletteDragStart(e, 'sfp')}
+                        onAdd={() => setSelectedId(null)}
+                        addLabel="Pilih SFP"
                     />
                     <PaletteItem
                         icon={<IconPng name="odp" size={36} alt="Combo" />}
@@ -426,6 +433,7 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                         color="bg-violet-100"
                         disabled={!canAdd}
                         onDragStart={(e) => onPaletteDragStart(e, 'combo')}
+                        onAdd={() => addNode('combo')}
                     />
                     <PaletteItem
                         icon={<IconPng name="rasio" size={36} alt="Rasio" />}
@@ -434,6 +442,7 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                         color="bg-sky-100"
                         disabled={!canAdd}
                         onDragStart={(e) => onPaletteDragStart(e, 'rasio')}
+                        onAdd={() => addNode('rasio')}
                     />
                     <PaletteItem
                         icon={<IconPng name="splitter" size={36} alt="Splitter" />}
@@ -442,6 +451,7 @@ export default function FlowBuilder({ config, chain, result, onChange }: Props) 
                         color="bg-emerald-100"
                         disabled={!canAdd}
                         onDragStart={(e) => onPaletteDragStart(e, 'splitter')}
+                        onAdd={() => addNode('splitter')}
                     />
                 </div>
                 {!canAdd && (
@@ -774,6 +784,8 @@ function PaletteItem({
     color,
     disabled = false,
     onDragStart,
+    onAdd,
+    addLabel = 'Tambah',
 }: {
     icon: ReactNode;
     title: string;
@@ -781,6 +793,8 @@ function PaletteItem({
     color: string;
     disabled?: boolean;
     onDragStart: (event: DragEvent) => void;
+    onAdd?: () => void;
+    addLabel?: string;
 }) {
     return (
         <div
@@ -792,17 +806,39 @@ function PaletteItem({
                     activeDrag = null;
                 }
             }}
-            className={`flex cursor-grab items-center gap-3 rounded-xl border border-line bg-white p-2.5 active:cursor-grabbing ${
+            className={`flex cursor-grab items-center gap-2 rounded-xl border border-line bg-white p-2.5 active:cursor-grabbing md:gap-3 ${
                 disabled ? 'cursor-not-allowed opacity-40' : 'hover:border-signal/40'
             }`}
         >
-            <div className={`flex size-10 items-center justify-center rounded-lg ${color}`}>
+            <div
+                className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${color}`}
+            >
                 {icon}
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-ink">{title}</p>
                 <p className="text-[11px] text-ink-soft">{subtitle}</p>
             </div>
+            {onAdd && (
+                <button
+                    type="button"
+                    disabled={disabled}
+                    aria-label={`${addLabel} ${title}`}
+                    title={addLabel}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!disabled) {
+                            onAdd();
+                        }
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-signal text-white shadow-sm transition hover:bg-signal-deep disabled:cursor-not-allowed disabled:opacity-40 md:hidden"
+                >
+                    <Plus className="size-5" strokeWidth={2.5} />
+                </button>
+            )}
         </div>
     );
 }
