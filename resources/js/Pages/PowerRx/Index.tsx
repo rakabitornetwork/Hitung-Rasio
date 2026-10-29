@@ -283,12 +283,15 @@ export default function Index({ config }: Props) {
 
     return (
         <>
-            <Head title="Perhitungan Rasio Splitter" />
+            <Head title="Perhitungan Rasio Splitter by Teslatech" />
 
-            <div className="mx-auto min-h-screen max-w-[1500px] px-3 py-6 sm:px-6">
+            <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col px-3 py-6 sm:px-6">
                 <header className="mb-5 max-w-3xl">
                     <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-                        Aplikasi Perhitungan Rasio Splitter
+                        Aplikasi Perhitungan Rasio Splitter{' '}
+                        <span className="font-medium text-ink-soft">
+                            by Teslatech
+                        </span>
                     </h1>
                     <p className="mt-2 text-sm text-ink-soft sm:text-base">
                         Bongkar-pasang kartu rasio dan splitter 1:N secara terpisah. Pasangkan
@@ -296,7 +299,10 @@ export default function Index({ config }: Props) {
                     </p>
                 </header>
 
-                <form onSubmit={handleOfficialCalculate} className="space-y-4">
+                <form
+                    onSubmit={handleOfficialCalculate}
+                    className="grow space-y-4"
+                >
                     <PathLossPanel
                         chain={chain}
                         pathLoss={displayed.pathLoss}
@@ -437,6 +443,13 @@ export default function Index({ config }: Props) {
                         )}
                     </div>
                 </form>
+
+                <footer className="mt-10 border-t border-line pt-4 pb-2 text-center text-xs text-ink-soft sm:text-sm">
+                    <p>
+                        Copyright &copy; {new Date().getFullYear()} Teslatech.
+                        All rights reserved.
+                    </p>
+                </footer>
             </div>
         </>
     );

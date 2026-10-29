@@ -12,7 +12,9 @@ type IconName =
     | 'simpan'
     | 'muat'
     | 'update'
-    | 'update-ok';
+    | 'update-ok'
+    | 'tampilkan'
+    | 'sembunyikan';
 
 type Props = {
     name: IconName;
@@ -36,6 +38,8 @@ const SRC: Record<IconName, string> = {
     muat: '/images/icons/muat.png',
     update: '/images/icons/update.png',
     'update-ok': '/images/icons/update-ok.png',
+    tampilkan: '/images/icons/tampilkan.png',
+    sembunyikan: '/images/icons/sembunyikan.png',
 };
 
 export default function IconPng({
