@@ -18,6 +18,7 @@ class PowerRxController extends Controller
                 'odp_splitter_il' => config('power_rx.odp_splitter_il'),
                 'allowed_odp_splitters' => config('power_rx.allowed_odp_splitters'),
                 'odp_count' => config('power_rx.odp_count'),
+                'max_nodes' => config('power_rx.max_nodes'),
                 'defaults' => config('power_rx.defaults'),
                 'thresholds' => config('power_rx.thresholds'),
             ],

@@ -119,10 +119,20 @@ return [
 
     'odp_count' => 8,
 
+    /** Maksimal kartu rasio + splitter di kanvas */
+    'max_nodes' => 16,
+
     'defaults' => [
         'sfp_power_dbm' => 7.0,
-        'tap_percents' => [4, 4, 4, 4, 6, 6, 8, 8],
+        'tap_percents' => [0, 0, 0, 0, 0, 0, 0, 0],
         'odp_splitters' => [8, 8, 8, 8, 8, 8, 8, 8],
+        'fiber_m' => 0.0,
+        'attenuation_db_per_km' => 0.35,
+        'connector_count' => 0,
+        'connector_loss_db_each' => 0.3,
+        'splice_count' => 0,
+        'splice_loss_db_each' => 0.1,
+        'design_margin_db' => 0.0,
     ],
 
     'allowed_odp_splitters' => [2, 4, 8, 16, 32, 64],

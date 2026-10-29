@@ -17,16 +17,24 @@ class CalculateTapChainRequest extends FormRequest
      */
     public function rules(): array
     {
-        $odpCount = (int) config('power_rx.odp_count');
+        $maxNodes = (int) config('power_rx.max_nodes');
         $allowedSplitters = config('power_rx.allowed_odp_splitters');
 
         return [
             'sfp_power_dbm' => ['required', 'numeric', 'between:-10,20'],
-            'odps' => ['required', 'array', "size:{$odpCount}"],
-            'odps.*.name' => ['required', 'string', 'max:64'],
-            'odps.*.enabled' => ['required', 'boolean'],
-            'odps.*.tap_percent' => ['required', 'integer', 'min:1', 'max:99'],
-            'odps.*.odp_splitter' => ['required', 'integer', Rule::in($allowedSplitters)],
+            'fiber_m' => ['nullable', 'numeric', 'min:0', 'max:200000'],
+            'attenuation_db_per_km' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'connector_count' => ['nullable', 'integer', 'min:0', 'max:64'],
+            'connector_loss_db_each' => ['nullable', 'numeric', 'min:0', 'max:3'],
+            'splice_count' => ['nullable', 'integer', 'min:0', 'max:200'],
+            'splice_loss_db_each' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'design_margin_db' => ['nullable', 'numeric', 'min:0', 'max:10'],
+            'nodes' => ['required', 'array', 'min:0', "max:{$maxNodes}"],
+            'nodes.*.id' => ['required', 'string', 'max:64'],
+            'nodes.*.type' => ['required', 'string', Rule::in(['rasio', 'splitter', 'combo'])],
+            'nodes.*.name' => ['required', 'string', 'max:64'],
+            'nodes.*.tap_percent' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'nodes.*.odp_splitter' => ['nullable', 'integer', Rule::in($allowedSplitters)],
         ];
     }
 
@@ -37,31 +45,69 @@ class CalculateTapChainRequest extends FormRequest
     {
         return [
             'sfp_power_dbm.required' => 'Daya SFP wajib diisi.',
-            'odps.size' => 'Simulasi membutuhkan tepat 8 ODP.',
-            'odps.*.tap_percent.min' => 'Rasio tap minimal 1%.',
-            'odps.*.odp_splitter.in' => 'Splitter ODP tidak didukung.',
+            'nodes.max' => 'Terlalu banyak komponen di kanvas.',
+            'nodes.*.type.in' => 'Tipe komponen harus rasio, splitter, atau combo.',
+            'nodes.*.odp_splitter.in' => 'Splitter 1:N tidak didukung.',
         ];
     }
 
     /**
      * @return array{
      *     sfp_power_dbm: float,
-     *     odps: list<array{name: string, enabled: bool, tap_percent: int, odp_splitter: int}>
+     *     fiber_m: float,
+     *     attenuation_db_per_km: float,
+     *     connector_count: int,
+     *     connector_loss_db_each: float,
+     *     splice_count: int,
+     *     splice_loss_db_each: float,
+     *     design_margin_db: float,
+     *     nodes: list<array{id: string, type: string, name: string, tap_percent?: int, odp_splitter?: int}>
      * }
      */
     public function chainInput(): array
     {
         /** @var array<string, mixed> $data */
         $data = $this->validated();
+        $defaults = config('power_rx.defaults');
+
+        $nodes = [];
+
+        foreach ($data['nodes'] as $node) {
+            if ($node['type'] === 'rasio') {
+                $nodes[] = [
+                    'id' => $node['id'],
+                    'type' => 'rasio',
+                    'name' => $node['name'],
+                    'tap_percent' => (int) ($node['tap_percent'] ?? 0),
+                ];
+            } elseif ($node['type'] === 'combo') {
+                $nodes[] = [
+                    'id' => $node['id'],
+                    'type' => 'combo',
+                    'name' => $node['name'],
+                    'tap_percent' => (int) ($node['tap_percent'] ?? 0),
+                    'odp_splitter' => (int) ($node['odp_splitter'] ?? 8),
+                ];
+            } else {
+                $nodes[] = [
+                    'id' => $node['id'],
+                    'type' => 'splitter',
+                    'name' => $node['name'],
+                    'odp_splitter' => (int) ($node['odp_splitter'] ?? 8),
+                ];
+            }
+        }
 
         return [
             'sfp_power_dbm' => (float) $data['sfp_power_dbm'],
-            'odps' => array_map(fn (array $odp): array => [
-                'name' => $odp['name'],
-                'enabled' => (bool) $odp['enabled'],
-                'tap_percent' => (int) $odp['tap_percent'],
-                'odp_splitter' => (int) $odp['odp_splitter'],
-            ], $data['odps']),
+            'fiber_m' => (float) ($data['fiber_m'] ?? $defaults['fiber_m']),
+            'attenuation_db_per_km' => (float) ($data['attenuation_db_per_km'] ?? $defaults['attenuation_db_per_km']),
+            'connector_count' => (int) ($data['connector_count'] ?? $defaults['connector_count']),
+            'connector_loss_db_each' => (float) ($data['connector_loss_db_each'] ?? $defaults['connector_loss_db_each']),
+            'splice_count' => (int) ($data['splice_count'] ?? $defaults['splice_count']),
+            'splice_loss_db_each' => (float) ($data['splice_loss_db_each'] ?? $defaults['splice_loss_db_each']),
+            'design_margin_db' => (float) ($data['design_margin_db'] ?? $defaults['design_margin_db']),
+            'nodes' => $nodes,
         ];
     }
 }
