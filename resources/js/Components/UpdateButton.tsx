@@ -169,9 +169,10 @@ export default function UpdateButton({ className = '' }: Props) {
             </button>
             {detail && !busy && (
                 <p
-                    className={`pointer-events-none absolute left-0 top-full z-10 mt-1 max-w-[14rem] truncate text-[10px] leading-tight ${
+                    className={`pointer-events-none absolute left-0 top-full z-10 mt-1 max-w-sm whitespace-normal text-[10px] leading-snug ${
                         error ? 'text-danger' : 'text-ink-soft'
                     }`}
+                    title={detail}
                 >
                     {detail}
                 </p>

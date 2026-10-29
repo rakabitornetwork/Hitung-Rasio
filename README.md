@@ -186,8 +186,39 @@ Tombol **Update / Terbaru** memanggil `git fetch` + `git pull --ff-only`, lalu `
 Catatan:
 
 - Working tree harus bersih (tanpa perubahan lokal yang bentrok), atau pull `--ff-only` bisa gagal.
-- User PHP-FPM harus punya akses `git` ke remote (HTTPS/SSH).
-- Untuk produksi publik, set `APP_UPDATE_ENABLED=false` atau isi `APP_UPDATE_TOKEN` agar tidak sembarang orang menarik update.
+- User PHP-FPM harus punya akses tulis ke folder aplikasi + `.git`, dan bisa mengakses GitHub tanpa prompt login.
+- Default `APP_UPDATE_RUN_BUILD=false` karena PHP-FPM sering tidak punya Node/npm di PATH. Setelah pull, build manual: `npm run build`.
+- Jika Node lewat nvm, set di `.env` misalnya:  
+  `APP_UPDATE_PATH=/home/USER/.nvm/versions/node/v22.23.3/bin` lalu `APP_UPDATE_RUN_BUILD=true`.
+- Untuk produksi publik, set `APP_UPDATE_ENABLED=false` atau isi `APP_UPDATE_TOKEN`.
+
+#### Jika tombol Update gagal
+
+1. Baca pesan error di bawah tombol (sering: perubahan lokal, npm tidak ditemukan, atau akses GitHub).
+2. Cek dari SSH sebagai user yang sama dengan PHP-FPM bila memungkinkan:
+
+```bash
+cd /path/ke/aplikasi
+git status
+git fetch origin main
+git pull --ff-only origin main
+```
+
+3. Jika ada file lokal berubah: commit, stash, atau `git checkout -- <file>` (hati-hati: menghapus perubahan lokal).
+4. Pastikan kepemilikan folder untuk user web, contoh:
+
+```bash
+sudo chown -R www-data:www-data /path/ke/aplikasi
+# atau nobody / nginx sesuai VPS Anda
+```
+
+5. Matikan build otomatis jika npm bermasalah:
+
+```env
+APP_UPDATE_RUN_BUILD=false
+```
+
+lalu `php artisan config:clear`.
 
 ---
 
